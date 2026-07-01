@@ -1,0 +1,22 @@
+{
+    "name": "forgechat",
+    "private": true,
+    "version": "1.0.0",
+    "description": "ForgeChat — a WhatsApp-style messenger on the RTCForge stack. Monolith: Node backend + React/Chakra frontend.",
+    "type": "module",
+    "scripts": {
+        "dev": "concurrently -k -n backend,frontend -c blue,magenta \"pnpm -C backend dev\" \"pnpm -C frontend dev\"",
+        "build": "pnpm -C frontend build",
+        "start": "pnpm -C backend start",
+        "test": "pnpm -C backend test",
+        "setup": "pnpm -C frontend install",
+        "lint": "biome lint .",
+        "format": "biome format --write .",
+        "check": "biome check .",
+        "check:fix": "biome check --write ."
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.5.2",
+        "concurrently": "^9.1.0"
+    }
+}

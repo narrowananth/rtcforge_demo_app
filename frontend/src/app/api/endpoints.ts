@@ -1,0 +1,25 @@
+export const API_ENDPOINTS = {
+    auth: {
+        register: '/api/auth/register',
+        login: '/api/auth/login',
+    },
+    me: '/api/me',
+    contacts: '/api/contacts',
+    user: (username: string) => `/api/users/${encodeURIComponent(username)}`,
+    presence: (ids: string[]) => `/api/presence?ids=${ids.join(',')}`,
+    conversations: '/api/conversations',
+    conversation: (id: string) => `/api/conversations/${id}`,
+    dm: '/api/conversations/dm',
+    group: '/api/conversations/group',
+    broadcast: '/api/conversations/broadcast',
+    members: (id: string) => `/api/conversations/${id}/members`,
+    member: (id: string, userId: string) => `/api/conversations/${id}/members/${userId}`,
+    messages: (id: string) => `/api/conversations/${id}/messages`,
+    message: (id: string, msgId: string) => `/api/conversations/${id}/messages/${msgId}`,
+    reactions: (id: string, msgId: string) =>
+        `/api/conversations/${id}/messages/${msgId}/reactions`,
+    media: '/api/media',
+    transfers: '/api/transfers',
+    calls: '/api/calls',
+    call: (id: string, action: 'accept' | 'decline' | 'end') => `/api/calls/${id}/${action}`,
+} as const
