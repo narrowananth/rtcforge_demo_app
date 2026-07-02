@@ -6,7 +6,7 @@
     "scripts": {
         "start": "node src/index.js",
         "dev": "node --watch src/index.js",
-        "test": "node test/smoke.test.js",
+        "test": "node test/smoke.test.js && node test/sfu.test.js && node test/cascade.test.js",
         "lint": "biome lint .",
         "format": "biome format --write .",
         "check": "biome check .",
@@ -28,12 +28,12 @@
     "dependencies": {
         "cluster-core": "^2.0.1",
         "express": "^5.2.1",
-        "rtcforge-adapter-udp": "^0.1.1",
-        "rtcforge-core": "^0.1.1",
-        "rtcforge-media": "^0.1.1",
-        "rtcforge-sdk": "^0.1.1",
-        "rtcforge-sfu": "^0.1.1",
-        "rtcforge-signaling": "^0.1.1",
+        "rtcforge-adapter-udp": "^0.1.2",
+        "rtcforge-core": "^0.1.2",
+        "rtcforge-media": "^0.1.2",
+        "rtcforge-sdk": "^0.1.2",
+        "rtcforge-sfu": "^0.1.2",
+        "rtcforge-signaling": "^0.1.2",
         "zod": "^4.4.3"
     },
     "devDependencies": {

@@ -13,8 +13,13 @@ export function VideoTile({ stream, label, self, color }: VideoTileProps) {
     const videoRef = useRef<HTMLVideoElement>(null)
     const hasVideo = stream.getVideoTracks().length > 0
 
+    // The <video> is always mounted (see below), so binding srcObject on stream
+    // change is enough — no remount to miss. A video track added later to the SAME
+    // stream then shows up without needing srcObject to be reassigned.
     useEffect(() => {
-        if (videoRef.current) videoRef.current.srcObject = stream
+        if (videoRef.current && videoRef.current.srcObject !== stream) {
+            videoRef.current.srcObject = stream
+        }
     }, [stream])
 
     return (
@@ -28,21 +33,24 @@ export function VideoTile({ stream, label, self, color }: VideoTileProps) {
             borderRadius="xl"
             overflow="hidden"
         >
-            {hasVideo ? (
-                <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted={self}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        transform: self ? 'scaleX(-1)' : undefined,
-                    }}
-                />
-            ) : (
-                <Center width="100%" height="100%">
+            {/* Always mount the media element so its audio track plays even when
+                there is no video (audio-only calls). Hide it behind the avatar when
+                the stream carries no video track. */}
+            <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted={self}
+                style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    transform: self ? 'scaleX(-1)' : undefined,
+                    display: hasVideo ? 'block' : 'none',
+                }}
+            />
+            {!hasVideo && (
+                <Center position="absolute" inset="0">
                     <Center
                         width="84px"
                         height="84px"

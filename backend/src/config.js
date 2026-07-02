@@ -7,6 +7,7 @@
  */
 
 const path = require('node:path')
+const { newId } = require('./rtc')
 
 function int(name, fallback) {
     const raw = process.env[name]
@@ -16,6 +17,13 @@ function int(name, fallback) {
         throw new Error(`Invalid integer for env ${name}: "${raw}"`)
     }
     return n
+}
+
+function list(name) {
+    return (process.env[name] || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
 }
 
 const NODE_ENV = process.env.NODE_ENV || 'development'
@@ -47,8 +55,9 @@ const config = {
     callTokenTtlMs: int('CALL_TOKEN_TTL_MS', 60 * 60 * 1000), // 1h — scoped to one call room
     callRingMs: int('CALL_RING_MS', 45000),
 
-    // Signaling server limits.
-    maxMessagesPerSecond: int('MAX_MESSAGES_PER_SECOND', 30),
+    // Signaling server limits. SFU produce/consume handshakes burst many small
+    // control messages, so this is higher than a plain chat app would need.
+    maxMessagesPerSecond: int('MAX_MESSAGES_PER_SECOND', 120),
     pingInterval: int('PING_INTERVAL_MS', 25000),
     pongTimeout: int('PONG_TIMEOUT_MS', 60000),
 
@@ -95,6 +104,34 @@ const config = {
               credential: process.env.TURN_CREDENTIAL || undefined,
           }
         : null,
+
+    // --- SFU media (rtcforge-media → mediasoup) ------------------------------
+    // Server-side selective forwarding: a broadcaster/caller PRODUCES tracks and
+    // every other room member CONSUMES them (one → many), instead of a P2P mesh.
+    sfu: {
+        enabled: (process.env.SFU_ENABLED ?? 'true') !== 'false',
+        numWorkers: int('SFU_WORKERS', 0) || undefined, // 0 → let the pool decide (≈ CPU count)
+        // mediasoup WebRTC transport listen/announce. For localhost dev the
+        // default 127.0.0.1 works; in prod set SFU_ANNOUNCED_IP to the public IP.
+        listenIp: process.env.SFU_LISTEN_IP || '127.0.0.1',
+        announcedIp: process.env.SFU_ANNOUNCED_IP || undefined,
+        rtcMinPort: int('SFU_RTC_MIN_PORT', 40000),
+        rtcMaxPort: int('SFU_RTC_MAX_PORT', 49999),
+        // CascadeTree fanout shape for broadcast rooms (many viewers).
+        cascadeFanout: int('SFU_CASCADE_FANOUT', 4),
+        viewersPerNode: int('SFU_VIEWERS_PER_NODE', 500),
+    },
+
+    // --- Cluster (rtcforge-core Membership + HashRing) ----------------------
+    // Single node by default (MemoryMembership). Set CLUSTER_UDP_PORT to switch
+    // to SWIM gossip over rtcforge-adapter-udp and shard rooms across nodes.
+    cluster: {
+        selfId: process.env.CLUSTER_NODE_ID || newId('node_'),
+        region: process.env.CLUSTER_REGION || 'local',
+        udpPort: int('CLUSTER_UDP_PORT', 0) || null,
+        advertiseHost: process.env.CLUSTER_ADVERTISE_HOST || undefined,
+        seeds: list('CLUSTER_SEEDS'), // e.g. "10.0.0.2:7946,10.0.0.3:7946"
+    },
 }
 
 module.exports = config

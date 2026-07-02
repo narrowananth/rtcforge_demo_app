@@ -5,13 +5,16 @@
  *  - readJson: tolerant read (missing/corrupt → fallback)
  *  - writeJsonAtomic: temp file → fsync → rename, so a crash can never leave a
  *    half-written file.
- *  - WriteQueue: serializes writes per key so concurrent updates to the same
- *    file can't interleave or clobber each other.
+ *  - WriteQueue: serializes writes per key via a rtcforge-core `Lock` so
+ *    concurrent updates to the same file can't interleave or clobber each other.
+ *
+ * The disk I/O itself is unavoidably local — rtcforge is real-time infra, not a
+ * storage layer — but the concurrency control (the `Lock`) and id generation
+ * come from rtcforge-core.
  */
 
-const fs = require('node:fs')
 const fsp = require('node:fs/promises')
-const crypto = require('node:crypto')
+const { MemoryLock, newId } = require('../rtc')
 
 async function readJson(file, fallback) {
     try {
@@ -24,7 +27,7 @@ async function readJson(file, fallback) {
 }
 
 async function writeJsonAtomic(file, data) {
-    const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`
+    const tmp = `${file}.${newId()}.tmp`
     const handle = await fsp.open(tmp, 'w')
     try {
         await handle.writeFile(JSON.stringify(data), 'utf8')
@@ -35,37 +38,49 @@ async function writeJsonAtomic(file, data) {
     await fsp.rename(tmp, file)
 }
 
-/** Best-effort synchronous variant for hard-exit paths. */
-function writeJsonAtomicSync(file, data) {
-    const tmp = `${file}.exit.tmp`
-    fs.writeFileSync(tmp, JSON.stringify(data), 'utf8')
-    fs.renameSync(tmp, file)
-}
-
+/**
+ * Per-key write serializer backed by a rtcforge-core `MemoryLock` (a mutex).
+ * `run(key, task)` holds the lock for `key` for the duration of `task`, so
+ * read-modify-write sequences on the same file are mutually exclusive.
+ */
 class WriteQueue {
     constructor() {
-        this._chains = new Map()
+        this._lock = new MemoryLock()
+        this._inflight = new Set()
     }
 
-    /** Run `task` after any pending write for `key`; returns task's result. */
     run(key, task) {
-        const prev = this._chains.get(key) || Promise.resolve()
-        const next = prev.then(task, task) // run regardless of prior outcome
-        // Keep the chain but swallow rejection for the stored tail so it doesn't
-        // become an unhandled rejection; callers still see their own result.
-        this._chains.set(
-            key,
-            next.then(
+        const promise = this._runLocked(key, task)
+        this._inflight.add(promise)
+        // Track completion without turning a caller's rejection into an
+        // unhandled one on the tracking copy.
+        void promise
+            .then(
                 () => {},
                 () => {},
-            ),
-        )
-        return next
+            )
+            .finally(() => this._inflight.delete(promise))
+        return promise
+    }
+
+    async _runLocked(key, task) {
+        // MemoryLock is a non-blocking mutex: acquire returns null when held, so
+        // spin briefly until we win the lock, then run under mutual exclusion.
+        let token = await this._lock.acquire(key, 30000)
+        while (!token) {
+            await new Promise((resolve) => setTimeout(resolve, 5))
+            token = await this._lock.acquire(key, 30000)
+        }
+        try {
+            return await task()
+        } finally {
+            await this._lock.release(key, token)
+        }
     }
 
     idle() {
-        return Promise.all([...this._chains.values()])
+        return Promise.all([...this._inflight])
     }
 }
 
-module.exports = { readJson, writeJsonAtomic, writeJsonAtomicSync, WriteQueue }
+module.exports = { readJson, writeJsonAtomic, WriteQueue }

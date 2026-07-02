@@ -1,10 +1,12 @@
 import { API_ENDPOINTS, apiClient } from '../../../api'
-import type { CallMedia, CallPeer } from '../../../shared/types'
+import type { CallKind, CallMedia, CallPeer } from '../../../shared/types'
 
 export interface PlaceCallResult {
     callId: string
     callRoomId: string
     media: CallMedia
+    mode: CallKind
+    produce: boolean
     token: string
 }
 
@@ -12,6 +14,8 @@ export interface AcceptCallResult {
     callId: string
     callRoomId: string
     media: CallMedia
+    mode: CallKind
+    produce: boolean
     from: CallPeer
     token: string
 }

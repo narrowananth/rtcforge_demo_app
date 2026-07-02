@@ -14,14 +14,24 @@ frontend/   Vite + React 18 + TypeScript + Chakra UI v3  (SPA)
 
 ## Stack
 
-**Backend** — `rtcforge-signaling` (per-user inbox rooms + fanout, call/p2p
-rooms, ICE via `iceServersHook`), `rtcforge-sdk`, `rtcforge-core`, Express,
-file-based stores.
+Every layer the RTCForge stack *can* own, it owns. Domain logic (users,
+conversations, messages), JSON persistence, password auth, and REST routing have
+no rtcforge equivalent and stay hand-rolled — everything else is rtcforge.
+
+**Backend** — `rtcforge-signaling` (per-user inbox rooms + fanout, call/broadcast
+rooms, cluster sharding via `RoomRouter`); `rtcforge-media` **SFU** (mediasoup:
+`MediaService`/`MediaRouter` — real server-side produce/consume, one → many);
+`rtcforge-sfu` (`SfuCluster` + `CascadeTree` broadcast fanout planner);
+`rtcforge-core` primitives throughout (`Clock`, `IdGenerator`, `RtcForgeError`,
+`Logger`, `EventEmitter`, `MessageBus` fanout, `MemoryLock`, `HashRing`,
+`Membership`); `rtcforge-adapter-udp` (SWIM gossip transport for multi-node);
+Express + file-based stores.
 
 **Frontend** — React 18, **Chakra UI v3** (design tokens + semantic tokens),
 TanStack Query, Axios, Framer Motion, lucide-react, Vite + TypeScript.
-`rtcforge-sdk` (inbox client) + `rtcforge-media` `Call` (mesh A/V + data-channel
-file transfer) run in the browser.
+`rtcforge-sdk` (inbox + call-room client) + **`mediasoup-client`** (SFU
+produce/consume for calls & broadcasts) + `rtcforge-media` `PeerConnection`
+(data-channel file transfer) run in the browser.
 
 ## Frontend architecture
 
@@ -76,9 +86,14 @@ voice note, and place an audio/video call with screen share.
 ## Test
 
 ```bash
-pnpm test        # backend end-to-end (accounts, DM/group/broadcast, edit/delete/
-                 # react/reply, media, inbox fanout, presence)
+pnpm test        # backend end-to-end: smoke (accounts, DM/group/broadcast,
+                 # edit/delete/react/reply, media, inbox fanout, presence) +
+                 # SFU control plane (boots the real mediasoup worker, drives
+                 # produce/consume, checks broadcast publish gating)
 ```
+
+The full media byte path (DTLS/ICE, real RTP) needs a browser with a camera/mic
+and is verified manually — see **Run** (open two browsers, place a call, go live).
 
 ## Lint & format
 
@@ -101,15 +116,23 @@ config, so style is identical across the monorepo.
 ## How it works (recap)
 
 - **Inbox + fanout** — each user holds one signaling connection to
-  `inbox:<userId>`; the server persists every message and pushes it to each
-  member's inbox. Commands go over HTTP; realtime events over the inbox socket.
-- **Calls** — `rtcforge-media` `Call` mesh over an ephemeral `call:<id>` room
-  joined with a short-lived call token; ICE (STUN/TURN) delivered by the
-  signaling `iceServersHook`; `room.bindCall` manages lifecycle; screen share via
-  `getDisplayMedia` + `addScreenTrack`.
-- **Media** — P2P-first: in a DM with an online peer the bytes stream over a
-  `rtcforge-media` data channel (no server); otherwise HTTP media store, which
-  persists and reaches offline users.
+  `inbox:<userId>`; `pushToUser` publishes to a `rtcforge-core` `MessageBus` topic
+  and the node hosting that inbox peer delivers it. Commands go over HTTP; realtime
+  events over the inbox socket. Rooms consistent-hash to an owning node via the
+  signaling `RoomRouter` + a `Membership` (in-memory single-node, SWIM gossip when
+  `CLUSTER_UDP_PORT` is set).
+- **Calls & broadcasts** — real **SFU** over `rtcforge-media` (mediasoup). A
+  caller/broadcaster PRODUCES its tracks once into a per-room `MediaRouter` and
+  every other member CONSUMES them (one → many) — no N-way mesh. Calls use a
+  `call:<id>` room (everyone publishes); a broadcast list uses a `bcast:<id>` room
+  where only the `broadcaster`-role token may publish and recipients are viewers.
+  The browser drives produce/consume with `mediasoup-client` over a thin protocol
+  on the signaling `signal` channel (reserved peer id `sfu`); screen share is an
+  extra video producer. `rtcforge-sfu`'s `CascadeTree` plans multi-node viewer
+  fanout.
+- **File transfer** — P2P-first: in a DM with an online peer the bytes stream
+  over a `rtcforge-media` data channel (no server); otherwise the HTTP media
+  store, which persists and reaches offline users.
 
 ## Configuration
 

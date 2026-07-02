@@ -5,8 +5,8 @@
  * are a per-user convenience list (one-directional, like a phone address book).
  */
 
-const crypto = require('node:crypto')
 const config = require('../config')
+const { newId, clock, InvalidArgumentError } = require('../rtc')
 const { hashPassword, verifyPassword } = require('../auth/password')
 const { issueToken } = require('../auth/token')
 
@@ -23,23 +23,16 @@ const AVATAR_COLORS = [
     '#90a4ae',
 ]
 
-class ValidationError extends Error {
-    constructor(message) {
-        super(message)
-        this.status = 400
-    }
-}
-
 function validateUsername(username) {
-    if (typeof username !== 'string') throw new ValidationError('Username required')
+    if (typeof username !== 'string') throw new InvalidArgumentError('Username required')
     const u = username.trim()
     if (u.length < config.minUsernameLength || u.length > config.maxUsernameLength) {
-        throw new ValidationError(
+        throw new InvalidArgumentError(
             `Username must be ${config.minUsernameLength}-${config.maxUsernameLength} characters`,
         )
     }
     if (!/^[a-zA-Z0-9_.]+$/.test(u))
-        throw new ValidationError('Username may use letters, numbers, _ and .')
+        throw new InvalidArgumentError('Username may use letters, numbers, _ and .')
     return u
 }
 
@@ -57,25 +50,27 @@ function createUserService({ userStore }) {
     async function register({ username, password, displayName }) {
         const u = validateUsername(username)
         if (typeof password !== 'string' || password.length < config.minPasswordLength) {
-            throw new ValidationError(
+            throw new InvalidArgumentError(
                 `Password must be at least ${config.minPasswordLength} characters`,
             )
         }
         const name = (displayName && String(displayName).trim()) || u
         if (name.length > config.maxDisplayNameLength)
-            throw new ValidationError('Display name too long')
-        if (userStore.usernameTaken(u)) throw new ValidationError('Username already taken')
+            throw new InvalidArgumentError('Display name too long')
+        if (await userStore.usernameTaken(u))
+            throw new InvalidArgumentError('Username already taken')
 
+        const id = newId('u_')
         const user = {
-            id: `u_${crypto.randomBytes(9).toString('hex')}`,
+            id,
             username: u,
             usernameLower: u.toLowerCase(),
             displayName: name,
-            avatarColor: AVATAR_COLORS[crypto.randomBytes(1)[0] % AVATAR_COLORS.length],
+            avatarColor: AVATAR_COLORS[Number.parseInt(id.slice(2, 4), 16) % AVATAR_COLORS.length],
             passwordHash: await hashPassword(password),
             contacts: [],
             conversations: [],
-            createdAt: Date.now(),
+            createdAt: clock.now(),
         }
         await userStore.create(user)
         return {
@@ -108,8 +103,8 @@ function createUserService({ userStore }) {
 
     async function addContact(userId, contactUsername) {
         const contact = await userStore.getByUsername(String(contactUsername || '').trim())
-        if (!contact) throw new ValidationError('No such user')
-        if (contact.id === userId) throw new ValidationError('You cannot add yourself')
+        if (!contact) throw new InvalidArgumentError('No such user')
+        if (contact.id === userId) throw new InvalidArgumentError('You cannot add yourself')
         await userStore.update(userId, (u) => {
             if (!u.contacts.includes(contact.id)) u.contacts.push(contact.id)
         })
@@ -131,4 +126,4 @@ function createUserService({ userStore }) {
     return { publicUser, register, login, addContact, listContacts, search, validateUsername }
 }
 
-module.exports = { createUserService, ValidationError }
+module.exports = { createUserService }

@@ -15,6 +15,7 @@
 
 const crypto = require('node:crypto')
 const config = require('../config')
+const { clock } = require('../rtc')
 
 function b64urlEncode(buf) {
     return Buffer.from(buf).toString('base64url')
@@ -38,8 +39,8 @@ function issueToken(claims) {
         userId: claims.userId,
         username: claims.username,
         displayName: claims.displayName,
-        iat: Date.now(),
-        exp: Date.now() + config.tokenTtlMs,
+        iat: clock.now(),
+        exp: clock.now() + config.tokenTtlMs,
     })
 }
 
@@ -47,7 +48,9 @@ function issueToken(claims) {
  * Call token — short-lived, scoped to ONE call room. Minted server-side only
  * after authorizing the user for that call, so joining a call room can't be
  * done with a plain session token.
- * @param {{ userId, username, displayName, roomId }} claims
+ * `role` ('broadcaster' | 'viewer' | 'member') is bound into the token so the
+ * SFU can gate who is allowed to publish media in a broadcast room.
+ * @param {{ userId, username, displayName, roomId, role? }} claims
  */
 function issueCallToken(claims) {
     return pack({
@@ -55,8 +58,9 @@ function issueCallToken(claims) {
         username: claims.username,
         displayName: claims.displayName,
         room: claims.roomId,
-        iat: Date.now(),
-        exp: Date.now() + config.callTokenTtlMs,
+        role: claims.role || 'member',
+        iat: clock.now(),
+        exp: clock.now() + config.callTokenTtlMs,
     })
 }
 
@@ -82,7 +86,7 @@ function decode(token) {
     } catch {
         throw new Error('Corrupt payload')
     }
-    if (typeof payload.exp !== 'number' || Date.now() > payload.exp)
+    if (typeof payload.exp !== 'number' || clock.now() > payload.exp)
         throw new Error('Token expired')
     return payload
 }
@@ -102,7 +106,7 @@ function signalingAuth(token) {
     return {
         roomId: p.room || config.inboxPrefix + p.userId,
         peerId: p.userId,
-        role: 'member',
+        role: p.role || 'member',
         metadata: { name: p.displayName || p.username || '', userId: p.userId },
     }
 }

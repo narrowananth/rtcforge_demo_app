@@ -22,7 +22,7 @@ export default defineConfig({
                     react: ['react', 'react-dom'],
                     chakra: ['@chakra-ui/react', '@emotion/react', '@emotion/styled'],
                     query: ['@tanstack/react-query'],
-                    rtc: ['rtcforge-sdk', 'rtcforge-media'],
+                    rtc: ['rtcforge-sdk', 'rtcforge-media', 'mediasoup-client'],
                 },
             },
         },

@@ -11,9 +11,8 @@
  *     editedAt, deletedAt, viaBroadcast, broadcastListId, ts }
  */
 
-const crypto = require('node:crypto')
 const config = require('../config')
-const { ValidationError } = require('./userService')
+const { newId, clock, InvalidArgumentError } = require('../rtc')
 
 const MESSAGE_TYPES = new Set(['text', 'image', 'file', 'audio', 'video'])
 
@@ -51,16 +50,17 @@ function createMessageService({
 
     function _validatePayload(payload) {
         const type = payload.type || 'text'
-        if (!MESSAGE_TYPES.has(type)) throw new ValidationError('Invalid message type')
+        if (!MESSAGE_TYPES.has(type)) throw new InvalidArgumentError('Invalid message type')
         const text = typeof payload.text === 'string' ? payload.text.replace(/\s+$/g, '') : ''
         if (type === 'text') {
-            if (!text) throw new ValidationError('Empty message')
-            if (text.length > config.maxMessageLength) throw new ValidationError('Message too long')
+            if (!text) throw new InvalidArgumentError('Empty message')
+            if (text.length > config.maxMessageLength)
+                throw new InvalidArgumentError('Message too long')
         } else {
             const a = payload.attachment
             // Either an HTTP-stored blob (url) or a peer-to-peer transfer (p2p + transferId).
             const ok = a && (a.url || (a.p2p && a.transferId))
-            if (!ok) throw new ValidationError(`Attachment required for ${type}`)
+            if (!ok) throw new InvalidArgumentError(`Attachment required for ${type}`)
         }
         return { type, text }
     }
@@ -80,7 +80,7 @@ function createMessageService({
             }
         }
         return {
-            id: `m_${Date.now().toString(36)}${crypto.randomBytes(6).toString('hex')}`,
+            id: `m_${clock.now().toString(36)}${newId()}`,
             convId,
             senderId,
             senderName: meta.senderName,
@@ -95,7 +95,7 @@ function createMessageService({
             deletedAt: null,
             viaBroadcast: false,
             broadcastListId: null,
-            ts: Date.now(),
+            ts: clock.now(),
         }
     }
 
@@ -134,9 +134,9 @@ function createMessageService({
 
     async function send(senderId, convId, payload) {
         const conv = await conversationStore.get(convId)
-        if (!conv) throw new ValidationError('No such conversation')
+        if (!conv) throw new InvalidArgumentError('No such conversation')
         if (!conversationService.isMember(conv, senderId))
-            throw new ValidationError('Not a member of this conversation')
+            throw new InvalidArgumentError('Not a member of this conversation')
 
         if (conv.type === 'broadcast') return _sendBroadcast(senderId, conv, payload)
 
@@ -165,20 +165,22 @@ function createMessageService({
     async function edit(userId, convId, msgId, newText) {
         const conv = await conversationStore.get(convId)
         if (!conv || !conversationService.isMember(conv, userId))
-            throw new ValidationError('Not allowed')
+            throw new InvalidArgumentError('Not allowed')
         const text = String(newText || '').replace(/\s+$/g, '')
-        if (!text) throw new ValidationError('Empty message')
-        if (text.length > config.maxMessageLength) throw new ValidationError('Message too long')
+        if (!text) throw new InvalidArgumentError('Empty message')
+        if (text.length > config.maxMessageLength)
+            throw new InvalidArgumentError('Message too long')
 
         const updated = await messageStore.update(convId, msgId, (m) => {
             if (m.senderId !== userId)
-                throw new ValidationError('You can only edit your own messages')
-            if (m.deletedAt) throw new ValidationError('Cannot edit a deleted message')
-            if (m.type !== 'text') throw new ValidationError('Only text messages can be edited')
+                throw new InvalidArgumentError('You can only edit your own messages')
+            if (m.deletedAt) throw new InvalidArgumentError('Cannot edit a deleted message')
+            if (m.type !== 'text')
+                throw new InvalidArgumentError('Only text messages can be edited')
             m.text = text
-            m.editedAt = Date.now()
+            m.editedAt = clock.now()
         })
-        if (!updated) throw new ValidationError('Message not found')
+        if (!updated) throw new InvalidArgumentError('Message not found')
         hub.pushToUsers(conv.members, {
             type: 'message-edited',
             convId,
@@ -192,17 +194,17 @@ function createMessageService({
     async function remove(userId, convId, msgId) {
         const conv = await conversationStore.get(convId)
         if (!conv || !conversationService.isMember(conv, userId))
-            throw new ValidationError('Not allowed')
+            throw new InvalidArgumentError('Not allowed')
         const updated = await messageStore.update(convId, msgId, (m) => {
             const canDelete = m.senderId === userId || conversationService.isAdmin(conv, userId)
-            if (!canDelete) throw new ValidationError('Not allowed to delete this message')
-            m.deletedAt = Date.now()
+            if (!canDelete) throw new InvalidArgumentError('Not allowed to delete this message')
+            m.deletedAt = clock.now()
             m.text = ''
             m.attachment = null
             m.reactions = {}
             m.replyPreview = null
         })
-        if (!updated) throw new ValidationError('Message not found')
+        if (!updated) throw new InvalidArgumentError('Message not found')
         hub.pushToUsers(conv.members, { type: 'message-deleted', convId, id: msgId })
         return updated
     }
@@ -210,12 +212,12 @@ function createMessageService({
     async function react(userId, convId, msgId, emoji) {
         const conv = await conversationStore.get(convId)
         if (!conv || !conversationService.isMember(conv, userId))
-            throw new ValidationError('Not allowed')
+            throw new InvalidArgumentError('Not allowed')
         const e = String(emoji || '').trim()
-        if (!e || [...e].length > 8) throw new ValidationError('Invalid reaction')
+        if (!e || [...e].length > 8) throw new InvalidArgumentError('Invalid reaction')
 
         const updated = await messageStore.update(convId, msgId, (m) => {
-            if (m.deletedAt) throw new ValidationError('Cannot react to a deleted message')
+            if (m.deletedAt) throw new InvalidArgumentError('Cannot react to a deleted message')
             const list = m.reactions[e] || []
             if (list.includes(userId)) {
                 m.reactions[e] = list.filter((id) => id !== userId)
@@ -224,7 +226,7 @@ function createMessageService({
                 m.reactions[e] = [...list, userId]
             }
         })
-        if (!updated) throw new ValidationError('Message not found')
+        if (!updated) throw new InvalidArgumentError('Message not found')
         hub.pushToUsers(conv.members, {
             type: 'message-reaction',
             convId,
@@ -237,7 +239,7 @@ function createMessageService({
     async function history(userId, convId, opts) {
         const conv = await conversationStore.get(convId)
         if (!conv || !conversationService.isMember(conv, userId))
-            throw new ValidationError('Not allowed')
+            throw new InvalidArgumentError('Not allowed')
         return messageStore.history(convId, opts)
     }
 

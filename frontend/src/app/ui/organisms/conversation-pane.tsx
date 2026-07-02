@@ -1,5 +1,5 @@
 import { Box, Center, Flex, Text } from '@chakra-ui/react'
-import { Info, Phone, Video } from 'lucide-react'
+import { Info, Phone, Radio, Video } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/auth-context'
 import { useCall } from '../../contexts/call-context'
@@ -116,7 +116,7 @@ export function ConversationPane({ onOpenInfo }: { onOpenInfo: () => void }) {
                         {subtitle}
                     </Text>
                 </Box>
-                {conv.type !== 'broadcast' && (
+                {conv.type !== 'broadcast' ? (
                     <>
                         <IconChip
                             label="Voice call"
@@ -131,6 +131,13 @@ export function ConversationPane({ onOpenInfo }: { onOpenInfo: () => void }) {
                             <Video size={20} />
                         </IconChip>
                     </>
+                ) : (
+                    <IconChip
+                        label="Go live (broadcast)"
+                        onClick={() => void call.placeCall(conv.id, conv.title, 'video')}
+                    >
+                        <Radio size={20} />
+                    </IconChip>
                 )}
                 <IconChip label="Info" onClick={onOpenInfo}>
                     <Info size={20} />

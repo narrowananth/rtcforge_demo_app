@@ -8,11 +8,11 @@ import {
     useRef,
     useState,
 } from 'react'
-import { Call, getDisplayMedia, getUserMedia, MediaEvent } from 'rtcforge-media/browser'
+import { getDisplayMedia, getUserMedia } from 'rtcforge-media/browser'
 import { type Room, RTCForgeClient } from 'rtcforge-sdk'
 import { callGateway } from '../features/calls/infrastructure/call-gateway'
-import { iceForRoom } from '../features/realtime/infrastructure/webrtc'
-import type { CallMedia, InboxEvent } from '../shared/types'
+import { SfuClient } from '../features/calls/infrastructure/sfu-client'
+import type { CallKind, CallMedia, InboxEvent } from '../shared/types'
 import { wsBaseUrl } from '../shared/utils'
 import { useRealtime } from './realtime-context'
 import { useToast } from './toast-context'
@@ -57,14 +57,16 @@ interface CallSession {
     callId: string
     client: RTCForgeClient
     room: Room
-    call: Call
-    localStream: MediaStream
+    sfu: SfuClient
+    localStream: MediaStream | null
     screenTrack: MediaStreamTrack | null
+    produce: boolean
 }
 
 interface Pending {
     callId: string
     media: CallMedia
+    mode: CallKind
 }
 
 interface CallApi {
@@ -102,13 +104,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
                 /* noop */
             }
             try {
-                s.call.close()
+                s.sfu.close()
             } catch {
                 /* noop */
             }
             s.client.leave().catch(() => undefined)
             try {
-                for (const t of s.localStream.getTracks()) t.stop()
+                for (const t of s.localStream?.getTracks() ?? []) t.stop()
             } catch {
                 /* noop */
             }
@@ -117,16 +119,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }, [])
 
     const joinCall = useCallback(
-        async (params: { callId: string; callRoomId: string; token: string; media: CallMedia }) => {
-            const { callId, callRoomId, token, media } = params
-            const stream = await getUserMedia(
-                media === 'video' ? { audio: true, video: true } : { audio: true },
-            )
+        async (params: {
+            callId: string
+            callRoomId: string
+            token: string
+            media: CallMedia
+            produce: boolean
+        }) => {
+            const { callId, callRoomId, token, media, produce } = params
             const client = new RTCForgeClient({ serverUrl: wsBaseUrl(), token, reconnect: false })
             const room = await client.joinRoom(callRoomId)
-            const call = new Call(room, { stream, iceServers: iceForRoom(room) })
+            const sfu = new SfuClient(room)
 
-            call.on(MediaEvent.RemoteStream, (peerId: string, remote: MediaStream) => {
+            sfu.onRemoteStream = (peerId: string, remote: MediaStream) => {
                 const name = (room.getPeerMetadata(peerId)?.name as string) || 'Peer'
                 setUi((prev) => {
                     const others = prev.remotes.filter((r) => r.peerId !== peerId)
@@ -136,35 +141,40 @@ export function CallProvider({ children }: { children: ReactNode }) {
                         remotes: [...others, { peerId, stream: remote, name }],
                     }
                 })
-            })
-            call.on(MediaEvent.RemoteStreamRemoved, (peerId: string) =>
+            }
+            sfu.onRemoteStreamRemoved = (peerId: string) =>
                 setUi((prev) => ({
                     ...prev,
                     remotes: prev.remotes.filter((r) => r.peerId !== peerId),
-                })),
-            )
-            call.on(MediaEvent.ConnectionFailed, (peerId: string) =>
-                setUi((prev) => ({
-                    ...prev,
-                    remotes: prev.remotes.filter((r) => r.peerId !== peerId),
-                })),
-            )
+                }))
+
+            // Load the SFU device, then publish our tracks (callers/broadcaster)
+            // and consume everyone already publishing.
+            await sfu.init()
+            let localStream: MediaStream | null = null
+            if (produce) {
+                localStream = await getUserMedia(
+                    media === 'video' ? { audio: true, video: true } : { audio: true },
+                )
+                await sfu.publish(localStream)
+            }
+            await sfu.consumeExisting()
 
             sessionRef.current = {
                 callId,
                 client,
                 room,
-                call,
-                localStream: stream,
+                sfu,
+                localStream,
                 screenTrack: null,
+                produce,
             }
-            room.bindCall(call)
             patch({
                 mode: 'active',
                 media,
-                localStream: stream,
-                micOn: true,
-                camOn: media === 'video',
+                localStream,
+                micOn: produce,
+                camOn: produce && media === 'video',
                 sharing: false,
             })
         },
@@ -181,11 +191,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
             patch({ mode: 'outgoing', media, status: `Calling ${title}…`, remotes: [] })
             try {
                 const res = await callGateway.place(convId, media)
+                if (res.mode === 'broadcast') patch({ status: `Broadcasting to ${title}…` })
                 await joinCall({
                     callId: res.callId,
                     callRoomId: res.callRoomId,
                     token: res.token,
                     media,
+                    produce: res.produce,
                 })
             } catch (err) {
                 cleanup()
@@ -208,6 +220,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
                 callRoomId: res.callRoomId,
                 token: res.token,
                 media: res.media,
+                produce: res.produce,
             })
         } catch (err) {
             cleanup()
@@ -231,36 +244,30 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
     const toggleMute = useCallback(() => {
         const s = sessionRef.current
-        if (!s) return
+        if (!s?.produce) return
         setUi((prev) => {
             const micOn = !prev.micOn
-            if (micOn) s.call.unmuteAudio()
-            else s.call.muteAudio()
+            s.sfu.setAudioEnabled(micOn)
             return { ...prev, micOn }
         })
     }, [])
 
     const toggleCam = useCallback(() => {
         const s = sessionRef.current
-        if (!s) return
+        if (!s?.produce) return
         setUi((prev) => {
             if (prev.media !== 'video') return prev
             const camOn = !prev.camOn
-            if (camOn) s.call.unmuteVideo()
-            else s.call.muteVideo()
+            s.sfu.setVideoEnabled(camOn)
             return { ...prev, camOn }
         })
     }, [])
 
     const toggleScreen = useCallback(async () => {
         const s = sessionRef.current
-        if (!s) return
+        if (!s?.produce) return
         if (s.screenTrack) {
-            try {
-                s.call.removeTrack(s.screenTrack)
-            } catch {
-                /* noop */
-            }
+            s.sfu.removeScreenTrack()
             s.screenTrack.stop()
             s.screenTrack = null
             patch({ sharing: false, localScreen: null })
@@ -270,14 +277,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
             const stream = await getDisplayMedia({ video: true })
             const track = stream.getVideoTracks()[0]
             s.screenTrack = track
-            s.call.addScreenTrack(track, stream)
+            await s.sfu.addScreenTrack(track)
             track.onended = () => {
                 if (sessionRef.current?.screenTrack === track) {
-                    try {
-                        sessionRef.current.call.removeTrack(track)
-                    } catch {
-                        /* noop */
-                    }
+                    sessionRef.current.sfu.removeScreenTrack()
                     sessionRef.current.screenTrack = null
                     patch({ sharing: false, localScreen: null })
                 }
@@ -293,20 +296,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
         const handle = (event: InboxEvent) => {
             switch (event.type) {
                 case 'call-incoming':
+                case 'broadcast-incoming': {
                     if (inCallRef.current || pendingRef.current) {
                         callGateway.decline(event.callId).catch(() => undefined) // busy
                         return
                     }
-                    pendingRef.current = { callId: event.callId, media: event.media }
+                    const mode: CallKind =
+                        event.type === 'broadcast-incoming' ? 'broadcast' : 'call'
+                    pendingRef.current = { callId: event.callId, media: event.media, mode }
                     patch({
                         mode: 'incoming',
                         media: event.media,
                         peerName: event.from.name,
                         peerAvatar: event.from.avatar ?? '#345',
-                        status: '',
+                        status: mode === 'broadcast' ? 'is broadcasting…' : '',
                         remotes: [],
                     })
                     break
+                }
                 case 'call-accepted':
                     if (sessionRef.current?.callId === event.callId)
                         patch({ status: `${event.by.name} joined` })

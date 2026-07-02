@@ -253,7 +253,9 @@ function createApiRouter({ services, stores, hub }) {
         }),
     )
 
-    // Calls (Phase 2) — signaling lifecycle; media flows P2P via rtcforge-media.
+    // Calls & live broadcasts — lifecycle only; media flows through the server
+    // SFU (rtcforge-media). `place` handles both a call (call:<id>) and a live
+    // broadcast to a broadcast list (bcast:<id>), keyed off the conversation type.
     router.post(
         '/calls',
         asyncHandler(async (req, res) => {

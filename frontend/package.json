@@ -21,10 +21,11 @@
         "axios": "^1.13.2",
         "framer-motion": "^12.23.24",
         "lucide-react": "^0.553.0",
+        "mediasoup-client": "^3.21.0",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
-        "rtcforge-media": "^0.1.1",
-        "rtcforge-sdk": "^0.1.1"
+        "rtcforge-media": "^0.1.2",
+        "rtcforge-sdk": "^0.1.2"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.5.2",

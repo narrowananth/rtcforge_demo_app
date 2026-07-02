@@ -3,6 +3,10 @@
 /**
  * Conversations — one JSON file per conversation.
  *
+ * In-memory layer is a rtcforge-core `MemoryStateStore` (id → conversation);
+ * writes are write-through JSON snapshots serialized per id via the WriteQueue
+ * (rtcforge-core `Lock`). Only the disk snapshot is local.
+ *
  * Conversation shape:
  *   { id, type: 'dm'|'group'|'broadcast', title, avatarColor,
  *     members: string[], admins: string[], createdBy, createdAt, updatedAt }
@@ -17,6 +21,7 @@ const fsp = require('node:fs/promises')
 
 const config = require('../config')
 const logger = require('../logger')
+const { MemoryStateStore, clock } = require('../rtc')
 const { readJson, writeJsonAtomic, WriteQueue } = require('./atomicJson')
 
 function dmId(a, b) {
@@ -26,7 +31,7 @@ function dmId(a, b) {
 
 class ConversationStore {
     constructor() {
-        this._cache = new Map()
+        this._convs = new MemoryStateStore()
         this._queue = new WriteQueue()
     }
 
@@ -41,14 +46,15 @@ class ConversationStore {
 
     async get(id) {
         if (!id) return null
-        if (this._cache.has(id)) return this._cache.get(id)
+        const cached = await this._convs.get(id)
+        if (cached) return cached
         const conv = await readJson(this._file(id), null)
-        if (conv) this._cache.set(id, conv)
+        if (conv) await this._convs.set(id, conv)
         return conv
     }
 
     async put(conv) {
-        this._cache.set(conv.id, conv)
+        await this._convs.set(conv.id, conv)
         await this._queue.run(conv.id, () => writeJsonAtomic(this._file(conv.id), conv))
         return conv
     }
@@ -59,8 +65,8 @@ class ConversationStore {
             if (!current) throw new Error('Conversation not found')
             const draft = structuredClone(current)
             const result = mutator(draft) || draft
-            result.updatedAt = Date.now()
-            this._cache.set(id, result)
+            result.updatedAt = clock.now()
+            await this._convs.set(id, result)
             await writeJsonAtomic(this._file(id), result)
             return result
         })

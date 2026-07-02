@@ -1,81 +1,99 @@
 'use strict'
 
 /**
- * Call signaling orchestration (Phase 2).
+ * Call & live-broadcast lifecycle.
  *
- * The media itself flows peer-to-peer via `rtcforge-media` `Call` (a mesh over a
- * shared signaling room). This service only manages the *lifecycle*: it creates
- * an ephemeral `call:<id>` room, rings the callees over their inboxes, mints the
- * short-lived call tokens that authorize joining that room, and relays
- * accept/decline/end signals. Call state is in-memory and disposable.
+ * Media flows through the server SFU (`rtcforge-media`, see ../media/*): every
+ * participant PRODUCES and CONSUMES over a `call:<id>` room, or — for a broadcast
+ * list — the owner PRODUCES into a `bcast:<id>` room and every recipient CONSUMES
+ * (one → many). This service manages the *lifecycle*: it creates the room, rings
+ * the invitees over their inboxes, and mints the short-lived, role-bound call
+ * tokens that authorise joining. Call state is in-memory and disposable.
+ *
+ *   call      → mode 'call'      → room 'call:<id>'  → all peers publish
+ *   broadcast → mode 'broadcast' → room 'bcast:<id>' → only the owner publishes
  */
 
-const crypto = require('node:crypto')
 const config = require('../config')
+const { newId, clock, InvalidArgumentError } = require('../rtc')
 const { issueCallToken } = require('../auth/token')
-const { ValidationError } = require('./userService')
 
 function createCallService({ userStore, conversationStore, conversationService, hub }) {
     const calls = new Map() // callId -> call
 
-    function tokenFor(user, callRoomId) {
+    function tokenFor(user, callRoomId, role) {
         return issueCallToken({
             userId: user.id,
             username: user.username,
             displayName: user.displayName,
             roomId: callRoomId,
+            role,
         })
     }
 
     async function place(callerId, convId, media) {
-        if (media !== 'audio' && media !== 'video') throw new ValidationError('Invalid call type')
+        if (media !== 'audio' && media !== 'video')
+            throw new InvalidArgumentError('Invalid call type')
         const conv = await conversationStore.get(convId)
         if (!conv || !conversationService.isMember(conv, callerId))
-            throw new ValidationError('Not allowed')
-        if (conv.type === 'broadcast') throw new ValidationError('Cannot call a broadcast list')
+            throw new InvalidArgumentError('Not allowed')
 
         const caller = await userStore.getById(callerId)
-        const callees = conv.members.filter((id) => id !== callerId)
-        if (callees.length === 0) throw new ValidationError('No one to call')
+        const isBroadcast = conv.type === 'broadcast'
+        // For a broadcast list `members` are the recipients (the owner is tracked
+        // via `admins`); for calls, everyone but the caller is rung.
+        const invitees = isBroadcast ? conv.members : conv.members.filter((id) => id !== callerId)
+        if (invitees.length === 0) throw new InvalidArgumentError('No one to call')
 
-        const callId = `c_${crypto.randomBytes(9).toString('hex')}`
-        const callRoomId = `call:${callId}`
+        const callId = newId('c_')
+        const callRoomId = `${isBroadcast ? 'bcast:' : 'call:'}${callId}`
         const call = {
             callId,
             convId,
             media,
+            mode: isBroadcast ? 'broadcast' : 'call',
             callRoomId,
             fromId: callerId,
             fromName: caller.displayName,
-            callees: new Set(callees),
+            callees: new Set(invitees),
             joined: new Set([callerId]),
             status: 'ringing',
-            createdAt: Date.now(),
+            createdAt: clock.now(),
             timer: null,
         }
         calls.set(callId, call)
 
-        hub.pushToUsers(callees, {
-            type: 'call-incoming',
+        hub.pushToUsers(invitees, {
+            type: isBroadcast ? 'broadcast-incoming' : 'call-incoming',
             callId,
             callRoomId,
             convId,
             media,
+            mode: call.mode,
             from: { id: callerId, name: caller.displayName, avatar: caller.avatarColor },
         })
 
-        call.timer = setTimeout(() => expire(callId), config.callRingMs)
+        call.timer = clock.setTimeout(() => expire(callId), config.callRingMs)
         call.timer.unref?.()
 
-        return { callId, callRoomId, media, token: tokenFor(caller, callRoomId) }
+        // The owner of a broadcast is the sole publisher; a caller publishes too.
+        const ownerRole = isBroadcast ? 'broadcaster' : 'member'
+        return {
+            callId,
+            callRoomId,
+            media,
+            mode: call.mode,
+            produce: true,
+            token: tokenFor(caller, callRoomId, ownerRole),
+        }
     }
 
     async function accept(callId, userId) {
         const call = calls.get(callId)
-        if (!call) throw new ValidationError('Call not found or already ended')
+        if (!call) throw new InvalidArgumentError('Call not found or already ended')
         if (!call.callees.has(userId))
-            throw new ValidationError('You were not invited to this call')
-        clearTimeout(call.timer)
+            throw new InvalidArgumentError('You were not invited to this call')
+        clock.clearTimeout(call.timer)
         call.status = 'active'
         call.callees.delete(userId)
         call.joined.add(userId)
@@ -88,12 +106,16 @@ function createCallService({ userStore, conversationStore, conversationService, 
             by: { id: userId, name: user.displayName },
         })
 
+        // Broadcast recipients are view-only; call participants publish.
+        const joinerRole = call.mode === 'broadcast' ? 'viewer' : 'member'
         return {
             callId,
             callRoomId: call.callRoomId,
             media: call.media,
+            mode: call.mode,
+            produce: call.mode !== 'broadcast',
             from: { id: call.fromId, name: call.fromName },
-            token: tokenFor(user, call.callRoomId),
+            token: tokenFor(user, call.callRoomId, joinerRole),
         }
     }
 
@@ -105,14 +127,14 @@ function createCallService({ userStore, conversationStore, conversationService, 
         if (call.callees.size === 0 && call.joined.size <= 1) end(callId, userId)
     }
 
-    /** A participant leaves. When only one remains (or the caller ends), the call closes. */
+    /** A participant leaves. When only one remains (or the owner ends), it closes. */
     function end(callId, actorId) {
         const call = calls.get(callId)
         if (!call) return
         const audience = new Set([call.fromId, ...call.joined, ...call.callees])
         audience.delete(actorId)
         hub.pushToUsers([...audience], { type: 'call-ended', callId })
-        clearTimeout(call.timer)
+        clock.clearTimeout(call.timer)
         calls.delete(callId)
     }
 

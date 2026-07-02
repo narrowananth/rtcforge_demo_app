@@ -24,7 +24,7 @@ interface RealtimeApi {
 const RealtimeContext = createContext<RealtimeApi | null>(null)
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
-    const { user } = useAuth()
+    const { user, logout } = useAuth()
     const [connected, setConnected] = useState(false)
     const listeners = useRef(new Set<Listener>())
 
@@ -40,9 +40,16 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         const token = localStorage.getItem('fc_token')
         if (!token) return
 
-        connectInbox(user.id, token, (event) => {
-            for (const listener of listeners.current) listener(event)
-        })
+        connectInbox(
+            user.id,
+            token,
+            (event) => {
+                for (const listener of listeners.current) listener(event)
+            },
+            // Expired/invalid token → drop the session so the app returns to login
+            // instead of the client silently retrying a token that can't work.
+            logout,
+        )
             .then((c) => {
                 if (cancelled) {
                     c.close()
@@ -58,7 +65,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
             conn?.close()
             setConnected(false)
         }
-    }, [user])
+    }, [user, logout])
 
     const value = useMemo<RealtimeApi>(() => ({ connected, subscribe }), [connected, subscribe])
     return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>

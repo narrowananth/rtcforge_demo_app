@@ -10,8 +10,8 @@
 
 const crypto = require('node:crypto')
 const config = require('../config')
+const { newId, clock, InvalidArgumentError } = require('../rtc')
 const { dmId } = require('../store/conversationStore')
-const { ValidationError } = require('./userService')
 
 const GROUP_COLORS = ['#26a69a', '#5c6bc0', '#ec407a', '#ab47bc', '#ff7043', '#66bb6a']
 
@@ -35,9 +35,9 @@ function createConversationService({ userStore, conversationStore, userService }
     }
 
     async function getOrCreateDm(userId, otherId) {
-        if (userId === otherId) throw new ValidationError('Cannot DM yourself')
+        if (userId === otherId) throw new InvalidArgumentError('Cannot DM yourself')
         const other = await userStore.getById(otherId)
-        if (!other) throw new ValidationError('No such user')
+        if (!other) throw new InvalidArgumentError('No such user')
         const id = dmId(userId, otherId)
         let conv = await conversationStore.get(id)
         if (!conv) {
@@ -49,8 +49,8 @@ function createConversationService({ userStore, conversationStore, userService }
                 members: [userId, otherId].sort(),
                 admins: [],
                 createdBy: userId,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
+                createdAt: clock.now(),
+                updatedAt: clock.now(),
                 lastMessage: null,
             }
             await conversationStore.put(conv)
@@ -63,22 +63,24 @@ function createConversationService({ userStore, conversationStore, userService }
     async function createGroup(creatorId, { title, memberIds }) {
         const t = String(title || '').trim()
         if (t.length < 1 || t.length > config.maxGroupTitleLength)
-            throw new ValidationError('Group title required')
+            throw new InvalidArgumentError('Group title required')
         const members = [...new Set([creatorId, ...(memberIds || [])])]
-        if (members.length > config.maxGroupMembers) throw new ValidationError('Too many members')
+        if (members.length > config.maxGroupMembers)
+            throw new InvalidArgumentError('Too many members')
         for (const m of members) {
-            if (!(await userStore.getById(m))) throw new ValidationError(`Unknown member: ${m}`)
+            if (!(await userStore.getById(m)))
+                throw new InvalidArgumentError(`Unknown member: ${m}`)
         }
         const conv = {
-            id: `g_${crypto.randomBytes(10).toString('hex')}`,
+            id: newId('g_'),
             type: 'group',
             title: t,
             avatarColor: pickColor(t),
             members,
             admins: [creatorId],
             createdBy: creatorId,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: clock.now(),
+            updatedAt: clock.now(),
             lastMessage: null,
         }
         await conversationStore.put(conv)
@@ -89,20 +91,21 @@ function createConversationService({ userStore, conversationStore, userService }
     async function createBroadcast(creatorId, { title, memberIds }) {
         const t = String(title || '').trim() || 'Broadcast list'
         const recipients = [...new Set(memberIds || [])].filter((id) => id !== creatorId)
-        if (recipients.length === 0) throw new ValidationError('Add at least one recipient')
+        if (recipients.length === 0) throw new InvalidArgumentError('Add at least one recipient')
         for (const m of recipients) {
-            if (!(await userStore.getById(m))) throw new ValidationError(`Unknown recipient: ${m}`)
+            if (!(await userStore.getById(m)))
+                throw new InvalidArgumentError(`Unknown recipient: ${m}`)
         }
         const conv = {
-            id: `b_${crypto.randomBytes(10).toString('hex')}`,
+            id: newId('b_'),
             type: 'broadcast',
             title: t,
             avatarColor: pickColor(t),
             members: recipients, // recipients; owner tracked separately
             admins: [creatorId],
             createdBy: creatorId,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: clock.now(),
+            updatedAt: clock.now(),
             lastMessage: null,
         }
         await conversationStore.put(conv)
@@ -121,8 +124,8 @@ function createConversationService({ userStore, conversationStore, userService }
     }
 
     async function addMembers(conv, actorId, memberIds) {
-        if (conv.type !== 'group') throw new ValidationError('Only groups support members')
-        if (!isAdmin(conv, actorId)) throw new ValidationError('Only admins can add members')
+        if (conv.type !== 'group') throw new InvalidArgumentError('Only groups support members')
+        if (!isAdmin(conv, actorId)) throw new InvalidArgumentError('Only admins can add members')
         const added = []
         const updated = await conversationStore.update(conv.id, (c) => {
             for (const id of memberIds || []) {
@@ -137,10 +140,10 @@ function createConversationService({ userStore, conversationStore, userService }
     }
 
     async function removeMember(conv, actorId, memberId) {
-        if (conv.type !== 'group') throw new ValidationError('Only groups support members')
+        if (conv.type !== 'group') throw new InvalidArgumentError('Only groups support members')
         const selfLeave = actorId === memberId
         if (!selfLeave && !isAdmin(conv, actorId))
-            throw new ValidationError('Only admins can remove members')
+            throw new InvalidArgumentError('Only admins can remove members')
         const updated = await conversationStore.update(conv.id, (c) => {
             c.members = c.members.filter((m) => m !== memberId)
             c.admins = c.admins.filter((a) => a !== memberId)
@@ -150,10 +153,11 @@ function createConversationService({ userStore, conversationStore, userService }
     }
 
     async function rename(conv, actorId, title) {
-        if (conv.type === 'dm') throw new ValidationError('Cannot rename a DM')
-        if (!isAdmin(conv, actorId)) throw new ValidationError('Only admins can rename')
+        if (conv.type === 'dm') throw new InvalidArgumentError('Cannot rename a DM')
+        if (!isAdmin(conv, actorId)) throw new InvalidArgumentError('Only admins can rename')
         const t = String(title || '').trim()
-        if (!t || t.length > config.maxGroupTitleLength) throw new ValidationError('Invalid title')
+        if (!t || t.length > config.maxGroupTitleLength)
+            throw new InvalidArgumentError('Invalid title')
         return conversationStore.update(conv.id, (c) => {
             c.title = t
         })

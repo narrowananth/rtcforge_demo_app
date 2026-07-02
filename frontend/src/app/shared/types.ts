@@ -84,6 +84,16 @@ export type InboxEvent =
           callRoomId: string
           convId: string
           media: CallMedia
+          mode?: CallKind
+          from: CallPeer
+      }
+    | {
+          type: 'broadcast-incoming'
+          callId: string
+          callRoomId: string
+          convId: string
+          media: CallMedia
+          mode: 'broadcast'
           from: CallPeer
       }
     | { type: 'call-accepted'; callId: string; by: { id: string; name: string } }
@@ -100,6 +110,7 @@ export type InboxEvent =
       }
 
 export type CallMedia = 'audio' | 'video'
+export type CallKind = 'call' | 'broadcast'
 export interface CallPeer {
     id: string
     name: string

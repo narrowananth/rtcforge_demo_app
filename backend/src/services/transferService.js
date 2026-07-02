@@ -11,9 +11,8 @@
  * reports `p2p:false` and the client falls back to the HTTP media store.
  */
 
-const crypto = require('node:crypto')
+const { newId, clock, InvalidArgumentError } = require('../rtc')
 const { issueCallToken } = require('../auth/token')
-const { ValidationError } = require('./userService')
 
 function createTransferService({ userStore, conversationStore, conversationService, hub }) {
     const sessions = new Map() // transferId -> { timer }
@@ -31,7 +30,7 @@ function createTransferService({ userStore, conversationStore, conversationServi
     async function offer(senderId, convId, meta) {
         const conv = await conversationStore.get(convId)
         if (!conv || !conversationService.isMember(conv, senderId))
-            throw new ValidationError('Not allowed')
+            throw new InvalidArgumentError('Not allowed')
 
         // P2P is 1:1 only; groups/broadcast use the HTTP store.
         if (conv.type !== 'dm') return { p2p: false }
@@ -40,10 +39,10 @@ function createTransferService({ userStore, conversationStore, conversationServi
 
         const sender = await userStore.getById(senderId)
         const recipient = await userStore.getById(otherId)
-        const transferId = `t_${crypto.randomBytes(9).toString('hex')}`
+        const transferId = newId('t_')
         const roomId = `p2p:${transferId}`
 
-        const timer = setTimeout(() => sessions.delete(transferId), TTL_MS)
+        const timer = clock.setTimeout(() => sessions.delete(transferId), TTL_MS)
         timer.unref?.()
         sessions.set(transferId, { timer })
 

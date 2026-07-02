@@ -6,11 +6,11 @@
  */
 
 const path = require('node:path')
-const crypto = require('node:crypto')
 const fsp = require('node:fs/promises')
 
 const config = require('../config')
 const logger = require('../logger')
+const { newId, clock } = require('../rtc')
 const { readJson, writeJsonAtomic } = require('./atomicJson')
 
 const EXT_BY_MIME = {
@@ -55,14 +55,14 @@ class MediaStore {
      * @returns {Promise<{ id, url, mime, size, filename }>}
      */
     async save(buffer, { mime, filename, uploaderId }) {
-        const id = `${Date.now().toString(36)}_${crypto.randomBytes(8).toString('hex')}.${extFor(mime, filename)}`
+        const id = `${clock.now().toString(36)}_${newId()}.${extFor(mime, filename)}`
         await writeJsonAtomic(`${this._file(id)}.meta`, {
             id,
             mime,
             size: buffer.length,
             filename: filename || id,
             uploaderId,
-            createdAt: Date.now(),
+            createdAt: clock.now(),
         })
         // The blob itself is written atomically too.
         const tmp = `${this._file(id)}.tmp`

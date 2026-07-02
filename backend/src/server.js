@@ -18,11 +18,17 @@ const { SignalingServer } = require('rtcforge-signaling')
 
 const config = require('./config')
 const logger = require('./logger')
+const { clock } = require('./rtc')
 const { signalingAuth } = require('./auth/token')
 const { errorHandler } = require('./http/middleware')
 const { createApiRouter } = require('./http/routes')
 const { createServices } = require('./services')
 const { RealtimeHub } = require('./realtime/hub')
+const { createCluster } = require('./cluster/membership')
+const { SfuService } = require('./media/sfuService')
+const { SfuMesh } = require('./media/sfuMesh')
+const { SfuTopology } = require('./media/sfuCluster')
+const { createSfuSignaling } = require('./media/sfuSignaling')
 
 const { UserStore } = require('./store/userStore')
 const { ConversationStore } = require('./store/conversationStore')
@@ -57,18 +63,27 @@ function createApp() {
 
     app.use(express.json({ limit: '256kb' }))
 
+    // --- Cluster membership (rtcforge-core) ---------------------------------
+    // Single node by default; SWIM gossip when CLUSTER_UDP_PORT is set. Feeds the
+    // signaling RoomRouter so rooms consistent-hash to an owning node.
+    const cluster = createCluster()
+
     const httpServer = http.createServer(app)
     const signaling = new SignalingServer({
         server: httpServer,
         auth: async (token) => signalingAuth(token),
-        maxPeersPerRoom: 8, // inbox rooms hold one user; call rooms hold a small mesh
+        // Broadcast rooms can hold many viewers; the SFU forwards, so this is a
+        // participant cap, not a mesh cap. Inbox rooms hold one user.
+        maxPeersPerRoom: config.sfu.viewersPerNode + 8,
         pingInterval: config.pingInterval,
         pongTimeout: config.pongTimeout,
         rateLimit: { maxMessagesPerSecond: config.maxMessagesPerSecond },
-        // Deliver ICE (STUN + optional TURN) to peers that need media/data transport.
-        // Inbox rooms never carry media, so they get none.
+        cluster: { selfId: cluster.self.id, membership: cluster.membership },
+        // ICE for the P2P data-channel transfer path (rtcforge-media mesh). SFU
+        // media rooms get their ICE from mediasoup's own transport candidates, so
+        // they don't need this — inbox rooms never carry media either.
         iceServersHook: (_peerId, roomId) => {
-            if (roomId.startsWith('call:') || roomId.startsWith('p2p:')) {
+            if (roomId.startsWith('p2p:')) {
                 return [{ urls: config.stunUrls }, ...(config.turn ? [config.turn] : [])]
             }
             return null
@@ -79,6 +94,20 @@ function createApp() {
 
     const hub = new RealtimeHub(signaling)
     hub.bind()
+
+    // --- SFU media (rtcforge-media + rtcforge-sfu) --------------------------
+    // Real server-side selective forwarding for calls/broadcasts. The signaling
+    // protocol that drives produce/consume is wired onto the signaling server.
+    const sfu = config.sfu.enabled ? new SfuService() : null
+    // Cross-node cascade media plane; this process registers itself as a node.
+    const mesh = config.sfu.enabled ? new SfuMesh() : null
+    const topology = config.sfu.enabled
+        ? new SfuTopology({ self: cluster.self, mesh, membership: cluster.membership })
+        : null
+    if (sfu) {
+        mesh.register(cluster.self.id, sfu)
+        createSfuSignaling({ signaling, sfu, topology }).bind()
+    }
 
     const services = createServices({ ...stores, hub })
 
@@ -95,7 +124,7 @@ function createApp() {
             if (conv) for (const m of conv.members) audience.add(m)
         }
         audience.delete(userId)
-        hub.pushToUsers([...audience], { type: 'presence', userId, online, ts: Date.now() })
+        hub.pushToUsers([...audience], { type: 'presence', userId, online, ts: clock.now() })
     })
 
     // --- Routes --------------------------------------------------------------
@@ -159,6 +188,8 @@ function createApp() {
             stores.messageStore.init(),
             stores.mediaStore.init(),
         ])
+        await cluster.start()
+        if (sfu) await sfu.init()
         await signaling.start()
         await new Promise((resolve, reject) => {
             httpServer.once('error', reject)
@@ -178,6 +209,12 @@ function createApp() {
         await signaling
             .stop()
             .catch((err) => logger.error('signaling.stop failed', { err: err.message }))
+        if (sfu)
+            await sfu.close().catch((err) => logger.error('sfu.close failed', { err: err.message }))
+        topology?.dispose()
+        await cluster
+            .stop()
+            .catch((err) => logger.error('cluster.stop failed', { err: err.message }))
         await new Promise((resolve) => httpServer.close(() => resolve()))
         await Promise.all([
             stores.messageStore.close(),
@@ -190,7 +227,20 @@ function createApp() {
         stores.messageStore.flushSyncBestEffort()
     }
 
-    return { app, httpServer, signaling, hub, services, stores, start, stop, flushSyncBestEffort }
+    return {
+        app,
+        httpServer,
+        signaling,
+        hub,
+        cluster,
+        sfu,
+        topology,
+        services,
+        stores,
+        start,
+        stop,
+        flushSyncBestEffort,
+    }
 }
 
 module.exports = { createApp }
