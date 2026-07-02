@@ -93,6 +93,16 @@ function createSfuSignaling({ signaling, sfu, topology }) {
         })
 
         room.on('peerLeft', (peer) => router.closeTransportsForPeer(peer.id))
+        // Re-plan the broadcast fanout whenever the audience changes — not only on
+        // ProducerAdded. Otherwise a viewer that joins AFTER the broadcaster began
+        // publishing never causes an edge to be planned for its node, so the
+        // cascade never reaches it. `getPeerCount() - 1` excludes the broadcaster.
+        if (room.id.startsWith(BROADCAST_PREFIX)) {
+            const replan = () =>
+                topology.planBroadcast(room.id, Math.max(0, room.getPeerCount() - 1))
+            room.on('peerJoined', replan)
+            room.on('peerLeft', replan)
+        }
         room.once('closed', () => {
             producersByRoom.delete(room.id)
             topology.detach(room.id)
@@ -193,7 +203,17 @@ function createSfuSignaling({ signaling, sfu, topology }) {
         })
     }
 
-    return { bind }
+    /**
+     * Producer ids currently live in a room, from the mirror kept up to date by
+     * the router's ProducerAdded/Closed events. Consumed by `SfuMesh` to backfill
+     * a freshly established cascade edge with producers that predate it.
+     */
+    function roomProducerIds(roomId) {
+        const reg = producersByRoom.get(roomId)
+        return reg ? [...reg.keys()] : []
+    }
+
+    return { bind, roomProducerIds }
 }
 
 module.exports = { createSfuSignaling, isSfuRoom, SFU_PEER, BROADCAST_PREFIX, CALL_PREFIX }

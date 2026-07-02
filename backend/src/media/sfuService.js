@@ -85,10 +85,17 @@ class SfuService {
         }
     }
 
-    /** MemoryLock is a non-blocking mutex; spin briefly until acquired. */
+    /**
+     * MemoryLock is a non-blocking, TTL-bounded mutex: the lock auto-expires
+     * after the TTL even if the holder hasn't released, so the TTL must exceed
+     * the worst-case task — here a mediasoup router attach. 60s sits comfortably
+     * above a cold-worker attach; a shorter TTL could expire mid-attach, let a
+     * second caller acquire, and attach a DUPLICATE router (the race this guards).
+     * Spin briefly until acquired.
+     */
     async _acquire(key) {
         for (let i = 0; i < 200; i++) {
-            const token = await this._lock.acquire(key, 5000)
+            const token = await this._lock.acquire(key, 60000)
             if (token) return token
             await new Promise((resolve) => setTimeout(resolve, 15))
         }

@@ -32,6 +32,29 @@ class SfuMesh {
     constructor() {
         this._nodes = new Map() // nodeId -> SfuService
         this._links = new Map() // `${roomId}|${from}|${to}` -> link handle
+        this._producerSource = null // (roomId) => Iterable<producerId>
+    }
+
+    /**
+     * Supply the producer ids currently live in a room. A cascade edge is created
+     * by the plan that the broadcaster's *own* producer triggers — so that
+     * producer already exists before the pipe does, and a future-only ProducerAdded
+     * hook would never relay it (rtcforge-media exposes no producer enumeration).
+     * The app tracks producers in sfuSignaling; wiring that in here lets a newly
+     * established edge backfill them so edge-node viewers actually receive media.
+     * @param {(roomId: string) => Iterable<string>} fn
+     */
+    setProducerSource(fn) {
+        this._producerSource = fn
+    }
+
+    _existingProducerIds(roomId) {
+        if (!this._producerSource) return []
+        try {
+            return [...this._producerSource(roomId)]
+        } catch {
+            return []
+        }
     }
 
     /** Register a co-located SFU node's media service under its node id. */
@@ -107,10 +130,24 @@ class SfuMesh {
                 piped,
             ).catch((err) => logger.warn('pipe producer failed', { roomId, err: err.message }))
         }
-        // Pump producers added on the origin from here on. (rtcforge-media exposes
-        // no producer enumeration, so producers created before the edge existed
-        // are relayed on the origin's next ProducerAdded / re-plan.)
+        // Attach the future-producer hook FIRST, then backfill producers that
+        // already exist on the origin (via the app producer registry). Ordering
+        // matters: with the listener live before we read the snapshot, a producer
+        // added concurrently is caught by one path or the other, and the shared
+        // `piped` set makes the overlap idempotent — no double-pipe, no miss.
         fromRouter.on(MediaRouterEvent.ProducerAdded, pump)
+        for (const producerId of this._existingProducerIds(roomId)) {
+            this._pipeProducer(
+                fromRouter,
+                toRouter,
+                fromPipe.id,
+                toPipe.id,
+                producerId,
+                piped,
+            ).catch((err) =>
+                logger.warn('pipe existing producer failed', { roomId, err: err.message }),
+            )
+        }
 
         this._links.set(key, {
             off: () => fromRouter.off(MediaRouterEvent.ProducerAdded, pump),

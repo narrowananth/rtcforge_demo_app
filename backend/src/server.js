@@ -106,7 +106,12 @@ function createApp() {
         : null
     if (sfu) {
         mesh.register(cluster.self.id, sfu)
-        createSfuSignaling({ signaling, sfu, topology }).bind()
+        const sfuSignaling = createSfuSignaling({ signaling, sfu, topology })
+        // Let a newly established cascade edge backfill producers that already
+        // exist (the broadcaster's stream predates the pipe that its own plan
+        // creates). The mesh has no producer enumeration of its own.
+        mesh.setProducerSource((roomId) => sfuSignaling.roomProducerIds(roomId))
+        sfuSignaling.bind()
     }
 
     const services = createServices({ ...stores, hub })

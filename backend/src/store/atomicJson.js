@@ -14,15 +14,25 @@
  */
 
 const fsp = require('node:fs/promises')
+const logger = require('../logger')
 const { MemoryLock, newId } = require('../rtc')
 
 async function readJson(file, fallback) {
+    let raw
     try {
-        const raw = await fsp.readFile(file, 'utf8')
-        return JSON.parse(raw)
+        raw = await fsp.readFile(file, 'utf8')
     } catch (err) {
         if (err.code === 'ENOENT') return fallback
-        throw err
+        throw err // genuine I/O error — don't mask it
+    }
+    // A truncated/corrupt snapshot must degrade to the fallback, not throw and
+    // take a store's init() (and the whole server boot) down with it. Atomic
+    // temp→fsync→rename writes make this rare, but tampering/partial disks happen.
+    try {
+        return JSON.parse(raw)
+    } catch (err) {
+        logger.warn('Corrupt JSON snapshot; using fallback', { file, err: err.message })
+        return fallback
     }
 }
 
@@ -64,12 +74,15 @@ class WriteQueue {
     }
 
     async _runLocked(key, task) {
-        // MemoryLock is a non-blocking mutex: acquire returns null when held, so
-        // spin briefly until we win the lock, then run under mutual exclusion.
-        let token = await this._lock.acquire(key, 30000)
+        // MemoryLock is a non-blocking, TTL-bounded mutex: acquire returns null
+        // when held, and the lock auto-expires after the TTL even if the holder
+        // hasn't released — so the TTL must comfortably exceed the worst-case task
+        // (a JSON write, ~ms) or two writers could run concurrently and clobber.
+        // Spin briefly until we win the lock, then run under mutual exclusion.
+        let token = await this._lock.acquire(key, 60000)
         while (!token) {
             await new Promise((resolve) => setTimeout(resolve, 5))
-            token = await this._lock.acquire(key, 30000)
+            token = await this._lock.acquire(key, 60000)
         }
         try {
             return await task()
