@@ -8,7 +8,7 @@ JSON files.
 Monorepo: a Node backend and a React frontend in one repo.
 
 ```
-backend/    Node + Express + rtcforge-signaling  (HTTP API + inbox WebSocket)
+backend/    Node + Express + rtcforge/server  (HTTP API + inbox WebSocket)
 frontend/   Vite + React 18 + TypeScript + Chakra UI v3  (SPA)
 ```
 
@@ -18,19 +18,19 @@ Every layer the RTCForge stack *can* own, it owns. Domain logic (users,
 conversations, messages), JSON persistence, password auth, and REST routing have
 no rtcforge equivalent and stay hand-rolled — everything else is rtcforge.
 
-**Backend** — `rtcforge-signaling` (per-user inbox rooms + fanout, call/broadcast
-rooms, cluster sharding via `RoomRouter`); `rtcforge-media` **SFU** (mediasoup:
+**Backend** — `rtcforge/server` (per-user inbox rooms + fanout, call/broadcast
+rooms, cluster sharding via `RoomRouter`); `rtcforge/media` **SFU** (mediasoup:
 `MediaService`/`MediaRouter` — real server-side produce/consume, one → many);
-`rtcforge-sfu` (`SfuCluster` + `CascadeTree` broadcast fanout planner);
-`rtcforge-core` primitives throughout (`Clock`, `IdGenerator`, `RtcForgeError`,
+`rtcforge/sfu` (`SfuCluster` + `CascadeTree` broadcast fanout planner);
+`rtcforge/core` primitives throughout (`Clock`, `IdGenerator`, `RtcForgeError`,
 `Logger`, `EventEmitter`, `MessageBus` fanout, `MemoryLock`, `HashRing`,
-`Membership`); `rtcforge-adapter-udp` (SWIM gossip transport for multi-node);
+`Membership`); `rtcforge/sfu/udp` (SWIM gossip transport for multi-node);
 Express + file-based stores.
 
 **Frontend** — React 18, **Chakra UI v3** (design tokens + semantic tokens),
 TanStack Query, Axios, Framer Motion, lucide-react, Vite + TypeScript.
-`rtcforge-sdk` (inbox + call-room client) + **`mediasoup-client`** (SFU
-produce/consume for calls & broadcasts) + `rtcforge-media` `PeerConnection`
+`rtcforge/client` (inbox + call-room client) + **`mediasoup-client`** (SFU
+produce/consume for calls & broadcasts) + `rtcforge/media` `PeerConnection`
 (data-channel file transfer) run in the browser.
 
 ## Frontend architecture
@@ -116,22 +116,22 @@ config, so style is identical across the monorepo.
 ## How it works (recap)
 
 - **Inbox + fanout** — each user holds one signaling connection to
-  `inbox:<userId>`; `pushToUser` publishes to a `rtcforge-core` `MessageBus` topic
+  `inbox:<userId>`; `pushToUser` publishes to a `rtcforge/core` `MessageBus` topic
   and the node hosting that inbox peer delivers it. Commands go over HTTP; realtime
   events over the inbox socket. Rooms consistent-hash to an owning node via the
   signaling `RoomRouter` + a `Membership` (in-memory single-node, SWIM gossip when
   `CLUSTER_UDP_PORT` is set).
-- **Calls & broadcasts** — real **SFU** over `rtcforge-media` (mediasoup). A
+- **Calls & broadcasts** — real **SFU** over `rtcforge/media` (mediasoup). A
   caller/broadcaster PRODUCES its tracks once into a per-room `MediaRouter` and
   every other member CONSUMES them (one → many) — no N-way mesh. Calls use a
   `call:<id>` room (everyone publishes); a broadcast list uses a `bcast:<id>` room
   where only the `broadcaster`-role token may publish and recipients are viewers.
   The browser drives produce/consume with `mediasoup-client` over a thin protocol
   on the signaling `signal` channel (reserved peer id `sfu`); screen share is an
-  extra video producer. `rtcforge-sfu`'s `CascadeTree` plans multi-node viewer
+  extra video producer. `rtcforge/sfu`'s `CascadeTree` plans multi-node viewer
   fanout.
 - **File transfer** — P2P-first: in a DM with an online peer the bytes stream
-  over a `rtcforge-media` data channel (no server); otherwise the HTTP media
+  over a `rtcforge/media` data channel (no server); otherwise the HTTP media
   store, which persists and reaches offline users.
 
 ## Configuration

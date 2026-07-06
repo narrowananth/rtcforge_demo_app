@@ -1,45 +1,71 @@
-import { ClientEvent, RTCForgeClient } from 'rtcforge-sdk'
+import { ClientEvent, RTCForgeClient } from 'rtcforge/client'
 import type { InboxEvent } from '../../../shared/types'
 import { wsBaseUrl } from '../../../shared/utils'
 
-// The signaling server rejects a bad/expired token by closing the socket with
-// RFC 6455 policy-violation (1008). Reconnecting with the same token can never
-// succeed, so we must stop the backoff loop instead of hammering the server.
-const CLOSE_POLICY_VIOLATION = 1008
+export type InboxStatus = 'connected' | 'reconnecting' | 'terminated'
 
 export interface InboxConnection {
     client: RTCForgeClient
     close: () => void
 }
 
+export interface InboxHandlers {
+    /** A server→client inbox event arrived. */
+    onEvent: (event: InboxEvent) => void
+    /** Connection status changed (for a "reconnecting…" banner). */
+    onStatus?: (status: InboxStatus, attempt?: number) => void
+    /**
+     * The socket re-established after a drop. Inbox events are fire-and-forget
+     * (the server buffers nothing), so events during the gap were lost — the
+     * caller should resync missed state (refetch conversations/messages).
+     */
+    onReconnect?: () => void
+    /**
+     * A permanent auth failure (expired/invalid token → 1008) or reconnect
+     * exhaustion. The token can't work; clear the session and re-login. The
+     * client is torn down before this fires.
+     */
+    onAuthError?: () => void
+}
+
 /**
- * Connect the user's single realtime inbox (`inbox:<userId>`). The server pushes
- * every message/conversation/presence/call/transfer event on the `inbox`
- * broadcast channel.
- *
- * @param onAuthError invoked when the socket is closed for an auth failure
- *   (expired/invalid token). The caller should clear the session and re-login;
- *   reconnecting is pointless. The client is torn down before this fires.
+ * Connect the user's single realtime inbox (`inbox:<userId>`), with automatic
+ * reconnection and token refresh. The server pushes every
+ * message/conversation/presence/call/transfer event on the `inbox` broadcast
+ * channel.
  */
 export async function connectInbox(
     userId: string,
     token: string,
-    onEvent: (event: InboxEvent) => void,
-    onAuthError?: () => void,
+    handlers: InboxHandlers,
 ): Promise<InboxConnection> {
-    const client = new RTCForgeClient({ serverUrl: wsBaseUrl(), token, reconnect: true })
+    const { onEvent, onStatus, onReconnect, onAuthError } = handlers
+    const client = new RTCForgeClient({
+        serverUrl: wsBaseUrl(),
+        token,
+        reconnect: true,
+        // Each reconnect re-auths with the freshest token from storage (a
+        // re-login in another tab updates it); a stale/expired one closes with
+        // 1008 → Terminated instead of looping on a token that can't work.
+        tokenRefresh: async () => localStorage.getItem('fc_token') || token,
+    })
     const close = () => {
         client.leave().catch(() => undefined)
     }
 
-    // Kill the reconnect loop on a permanent auth rejection. `leave()` cancels any
-    // pending reconnect; without this the `reconnect: true` client retries an
-    // already-expired token every backoff tick forever (even after logout).
-    client.on(ClientEvent.Disconnected, (code: number) => {
-        if (code === CLOSE_POLICY_VIOLATION) {
-            close()
-            onAuthError?.()
-        }
+    let established = false
+    client.on(ClientEvent.Connected, () => {
+        onStatus?.('connected')
+        // The first Connected is the initial join; any later one is a reconnect
+        // after a drop → resync the state we missed while offline.
+        if (established) onReconnect?.()
+        else established = true
+    })
+    client.on(ClientEvent.Reconnecting, (attempt: number) => onStatus?.('reconnecting', attempt))
+    client.on(ClientEvent.Terminated, () => {
+        onStatus?.('terminated')
+        close()
+        onAuthError?.()
     })
 
     try {

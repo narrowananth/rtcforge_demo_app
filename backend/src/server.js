@@ -2,7 +2,7 @@
 
 /**
  * Application wiring:
- *   Express REST API  +  rtcforge-signaling (inbox rooms)  +  file-based stores
+ *   Express REST API  +  rtcforge/server (inbox rooms)  +  file-based stores
  *
  * Each user connects one signaling client to `inbox:<userId>`; the RealtimeHub
  * pushes message/conversation/presence events to those inbox peers. HTTP handles
@@ -14,10 +14,11 @@ const path = require('node:path')
 const fs = require('node:fs')
 
 const express = require('express')
-const { SignalingServer } = require('rtcforge-signaling')
+const { SignalingServer } = require('rtcforge/server')
 
 const config = require('./config')
 const logger = require('./logger')
+const { Metrics } = require('./metrics')
 const { clock } = require('./rtc')
 const { signalingAuth } = require('./auth/token')
 const { errorHandler } = require('./http/middleware')
@@ -63,10 +64,14 @@ function createApp() {
 
     app.use(express.json({ limit: '256kb' }))
 
-    // --- Cluster membership (rtcforge-core) ---------------------------------
+    // --- Cluster membership (rtcforge/core) ---------------------------------
     // Single node by default; SWIM gossip when CLUSTER_UDP_PORT is set. Feeds the
     // signaling RoomRouter so rooms consistent-hash to an owning node.
     const cluster = createCluster()
+
+    // Operational metrics sink — the signaling server emits room/peer lifecycle
+    // counters and gauges here; surfaced at /healthz.
+    const metrics = new Metrics()
 
     const httpServer = http.createServer(app)
     const signaling = new SignalingServer({
@@ -79,7 +84,15 @@ function createApp() {
         pongTimeout: config.pongTimeout,
         rateLimit: { maxMessagesPerSecond: config.maxMessagesPerSecond },
         cluster: { selfId: cluster.self.id, membership: cluster.membership },
-        // ICE for the P2P data-channel transfer path (rtcforge-media mesh). SFU
+        // Defence-in-depth: CSWSH origin allowlist (empty ⇒ any, for dev/non-browser)
+        // and hard connection/room caps against floods.
+        allowedOrigins: config.allowedOrigins.length ? config.allowedOrigins : undefined,
+        maxConnections: config.maxConnections,
+        maxRooms: config.maxRooms,
+        metrics,
+        // Security/compliance audit trail: peer & room join/leave/kick.
+        auditLog: (event) => logger.info('audit', event),
+        // ICE for the P2P data-channel transfer path (rtcforge/media mesh). SFU
         // media rooms get their ICE from mediasoup's own transport candidates, so
         // they don't need this — inbox rooms never carry media either.
         iceServersHook: (_peerId, roomId) => {
@@ -95,7 +108,7 @@ function createApp() {
     const hub = new RealtimeHub(signaling)
     hub.bind()
 
-    // --- SFU media (rtcforge-media + rtcforge-sfu) --------------------------
+    // --- SFU media (rtcforge/media + rtcforge/sfu) --------------------------
     // Real server-side selective forwarding for calls/broadcasts. The signaling
     // protocol that drives produce/consume is wired onto the signaling server.
     const sfu = config.sfu.enabled ? new SfuService() : null
@@ -133,7 +146,9 @@ function createApp() {
     })
 
     // --- Routes --------------------------------------------------------------
-    app.get('/healthz', (_req, res) => res.json({ status: 'ok', ...signaling.getStats() }))
+    app.get('/healthz', (_req, res) =>
+        res.json({ status: 'ok', ...signaling.getStats(), metrics: metrics.snapshot() }),
+    )
 
     app.get('/media/:id', (req, res) => {
         const filePath = stores.mediaStore.pathFor(req.params.id)

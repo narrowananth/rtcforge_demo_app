@@ -4,7 +4,7 @@
  * Peer-to-peer media transfer sessions.
  *
  * When a DM peer is online, media bytes are sent directly browser→browser over a
- * WebRTC data channel (rtcforge-media `Call`) — no server hop for the payload.
+ * WebRTC data channel (rtcforge/media `Call`) — no server hop for the payload.
  * This service only brokers the session: it creates an ephemeral `p2p:<id>`
  * room, mints the room-scoped tokens both sides need to join, and rings the
  * recipient over their inbox. If the peer is offline (or it's not a DM), it

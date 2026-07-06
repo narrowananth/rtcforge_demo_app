@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * Realtime fanout hub — built on rtcforge-core `EventEmitter` + `MessageBus`.
+ * Realtime fanout hub — built on rtcforge/core `EventEmitter` + `MessageBus`.
  *
  * Every logged-in user holds ONE signaling connection to their personal inbox
  * room (`inbox:<userId>`, peerId = userId). Server→client events are delivered
@@ -26,8 +26,8 @@ const { EventEmitter, LocalMessageBus, clock } = require('../rtc')
 
 class RealtimeHub extends EventEmitter {
     /**
-     * @param {import('rtcforge-signaling').SignalingServer} signaling
-     * @param {{ bus?: import('rtcforge-core').MessageBus }} [opts]
+     * @param {import('rtcforge/server').SignalingServer} signaling
+     * @param {{ bus?: import('rtcforge/core').MessageBus }} [opts]
      */
     constructor(signaling, { bus } = {}) {
         super()

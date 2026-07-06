@@ -1,26 +1,59 @@
-import { Call, MediaEvent } from 'rtcforge-media/browser'
-import { RTCForgeClient } from 'rtcforge-sdk'
+import { RTCForgeClient } from 'rtcforge/client'
+import {
+    type DataChannelHub,
+    FileTransferEvent,
+    FileTransferManager,
+    MemorySink,
+    type ReceiveTransfer,
+    TransferEvent,
+} from 'rtcforge/filetransfer'
+import { Call, MediaEvent } from 'rtcforge/media'
 import type { InboxEvent } from '../../../shared/types'
 import { wsBaseUrl } from '../../../shared/utils'
 import { iceForRoom } from '../../realtime/infrastructure/webrtc'
 
-const CHUNK = 16 * 1024
+/**
+ * Peer-to-peer file transfer over the rtcforge WebRTC data channel, driven by
+ * rtcforge's own `FileTransferManager`: SHA-256 integrity checking, real
+ * backpressure (high/low water marks), a hostile-size cap, and resumable sends
+ * on a mid-transfer channel drop. The manager needs a `DataChannelHub` — the
+ * seam onto the peer-connection layer — which the mesh `Call` already satisfies
+ * (`createDataChannel` + the `data-channel` event), so we adapt it in a few lines.
+ */
+
+const MAX_FILE_BYTES = 200 * 1024 * 1024 // 200 MB — blunt memory/disk exhaustion
+const SEND_WAIT_MS = 30000
+const RECV_WAIT_MS = 120000
 
 type P2PIncoming = Extract<InboxEvent, { type: 'p2p-incoming' }>
 
-/** Sender side: join the p2p room and stream the file over a data channel. */
+/** Wrap a mesh {@link Call} as the {@link DataChannelHub} the transfer engine needs. */
+function callHub(call: Call): DataChannelHub {
+    return {
+        createDataChannel: (peerId, label, opts) => call.createDataChannel(peerId, label, opts),
+        on: (_event, handler) => call.on(MediaEvent.DataChannel, handler),
+        off: (_event, handler) => call.off(MediaEvent.DataChannel, handler),
+    }
+}
+
+/** Sender side: join the p2p room and stream the file once the recipient is present. */
 export async function sendFileP2P(params: {
     roomId: string
     token: string
     recipientId: string
     file: File
+    onProgress?: (ratio: number) => void
 }): Promise<void> {
-    const { roomId, token, recipientId, file } = params
+    const { roomId, token, recipientId, file, onProgress } = params
     const client = new RTCForgeClient({ serverUrl: wsBaseUrl(), token, reconnect: false })
-    let sent = false
-    // eslint-disable-next-line prefer-const
+    let ftm: FileTransferManager | undefined
     let call: Call | undefined
     const teardown = () => {
+        try {
+            ftm?.close()
+        } catch {
+            /* noop */
+        }
         try {
             call?.close()
         } catch {
@@ -31,72 +64,45 @@ export async function sendFileP2P(params: {
     try {
         const room = await client.joinRoom(roomId)
         call = new Call(room, { iceServers: iceForRoom(room) })
-        const trySend = async () => {
-            if (sent || !call) return
-            const channel = call.createDataChannel(recipientId, `file-${roomId}`, {
-                ordered: true,
-            })
-            if (!channel) return // peer connection not ready yet
-            sent = true
-            try {
-                await streamFile(channel, file)
-            } catch {
-                /* ignore */
-            }
-            setTimeout(teardown, 3000)
-        }
         room.bindCall(call)
+        ftm = new FileTransferManager(callHub(call), { checksum: true, resumable: true })
+
+        let started = false
+        const trySend = () => {
+            if (started || !ftm) return
+            started = true
+            try {
+                const transfer = ftm.sendFile(recipientId, file)
+                transfer.on(TransferEvent.Progress, (p) => onProgress?.(p.ratio))
+                transfer.on(TransferEvent.Complete, () => {
+                    onProgress?.(1)
+                    setTimeout(teardown, 1500)
+                })
+                transfer.on(TransferEvent.Error, () => setTimeout(teardown, 1500))
+            } catch {
+                setTimeout(teardown, 1500)
+            }
+        }
+
+        // Send as soon as the recipient's peer connection exists (perfect
+        // negotiation creates it on peer-join), or immediately if already present.
         room.on('peer-joined', (peerId: string) => {
-            if (peerId === recipientId) void trySend()
+            if (peerId === recipientId) trySend()
         })
-        if (room.peers.includes(recipientId)) void trySend()
+        if (room.peers.includes(recipientId)) trySend()
         setTimeout(() => {
-            if (!sent) teardown()
-        }, 30000)
+            if (!started) teardown()
+        }, SEND_WAIT_MS)
     } catch {
         teardown()
     }
 }
 
-function streamFile(channel: RTCDataChannel, file: File): Promise<void> {
-    return new Promise((resolve, reject) => {
-        channel.binaryType = 'arraybuffer'
-        const start = async () => {
-            try {
-                channel.send(
-                    JSON.stringify({
-                        t: 'meta',
-                        name: file.name,
-                        mime: file.type,
-                        size: file.size,
-                    }),
-                )
-                const buf = new Uint8Array(await file.arrayBuffer())
-                for (let off = 0; off < buf.length; off += CHUNK) {
-                    if (channel.bufferedAmount > 4 * 1024 * 1024) {
-                        await new Promise<void>((r) => {
-                            channel.bufferedAmountLowThreshold = 1024 * 1024
-                            channel.onbufferedamountlow = () => r()
-                        })
-                    }
-                    channel.send(buf.subarray(off, off + CHUNK))
-                }
-                channel.send(JSON.stringify({ t: 'done' }))
-                resolve()
-            } catch (err) {
-                reject(err instanceof Error ? err : new Error('send failed'))
-            }
-        }
-        if (channel.readyState === 'open') void start()
-        else channel.onopen = () => void start()
-        channel.onerror = () => reject(new Error('data channel error'))
-    })
-}
-
-/** Receiver side: join the p2p room and reassemble the incoming file. */
+/** Receiver side: join the p2p room and accept the incoming offer into memory. */
 export async function receiveFileP2P(
     event: P2PIncoming,
     onComplete: (blobUrl: string) => void,
+    onProgress?: (ratio: number) => void,
 ): Promise<void> {
     const client = new RTCForgeClient({
         serverUrl: wsBaseUrl(),
@@ -106,7 +112,18 @@ export async function receiveFileP2P(
     try {
         const room = await client.joinRoom(event.roomId)
         const call = new Call(room, { iceServers: iceForRoom(room) })
+        room.bindCall(call)
+        const ftm = new FileTransferManager(callHub(call), {
+            checksum: true,
+            resumable: true,
+            maxFileSize: MAX_FILE_BYTES,
+        })
         const teardown = () => {
+            try {
+                ftm.close()
+            } catch {
+                /* noop */
+            }
             try {
                 call.close()
             } catch {
@@ -114,33 +131,20 @@ export async function receiveFileP2P(
             }
             client.leave().catch(() => undefined)
         }
-        call.on(MediaEvent.DataChannel, (_peerId: string, channel: RTCDataChannel) => {
-            receiveChannel(channel, event, (url) => {
-                onComplete(url)
-                teardown()
+        ftm.on(FileTransferEvent.IncomingOffer, (transfer: ReceiveTransfer) => {
+            transfer.on(TransferEvent.Progress, (p) => onProgress?.(p.ratio))
+            transfer.on(TransferEvent.Complete, () => {
+                const blob = transfer.result?.blob
+                if (blob) onComplete(URL.createObjectURL(blob))
+                setTimeout(teardown, 1500)
             })
+            transfer.on(TransferEvent.Error, () => setTimeout(teardown, 1500))
+            // The engine verifies the SHA-256 digest before Complete fires, so a
+            // corrupt or truncated transfer surfaces as Error, never a bad blob.
+            transfer.accept(new MemorySink())
         })
-        room.bindCall(call)
-        setTimeout(teardown, 60000)
+        setTimeout(teardown, RECV_WAIT_MS)
     } catch {
         client.leave().catch(() => undefined)
-    }
-}
-
-function receiveChannel(channel: RTCDataChannel, event: P2PIncoming, done: (url: string) => void) {
-    channel.binaryType = 'arraybuffer'
-    let meta: { mime?: string } | null = null
-    const chunks: ArrayBuffer[] = []
-    channel.onmessage = (e: MessageEvent) => {
-        if (typeof e.data === 'string') {
-            const msg = JSON.parse(e.data)
-            if (msg.t === 'meta') meta = msg
-            else if (msg.t === 'done') {
-                const blob = new Blob(chunks, { type: meta?.mime ?? event.meta.mime })
-                done(URL.createObjectURL(blob))
-            }
-        } else {
-            chunks.push(e.data as ArrayBuffer)
-        }
     }
 }

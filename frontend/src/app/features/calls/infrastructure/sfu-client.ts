@@ -1,11 +1,11 @@
 import { Device, type types } from 'mediasoup-client'
-import { MessageType, type Room } from 'rtcforge-sdk'
+import { MessageType, type Room } from 'rtcforge/client'
 import { iceForRoom } from '../../realtime/infrastructure/webrtc'
 
 /**
  * Browser SFU client — the mediasoup-client counterpart of the server's
- * `rtcforge-media` MediaRouter. rtcforge ships no browser SFU client (only the
- * P2P mesh `Call`), so this drives produce/consume over the rtcforge-sdk `Room`
+ * `rtcforge/media` MediaRouter. rtcforge ships no browser SFU client (only the
+ * P2P mesh `Call`), so this drives produce/consume over the rtcforge/client `Room`
  * signal channel, addressing the reserved server peer id `'sfu'` (see the
  * backend's media/sfuSignaling.js).
  *
@@ -151,6 +151,16 @@ export class SfuClient {
         this.producers.delete('screen')
     }
 
+    /**
+     * Hot-swap the track behind an existing producer (mic/camera change) without
+     * renegotiating — mediasoup keeps the same producer, viewers see no interruption.
+     */
+    async replaceTrack(kind: 'audio' | 'video', track: MediaStreamTrack): Promise<void> {
+        const producer = this.producers.get(kind)
+        if (!producer) return
+        await producer.replaceTrack({ track })
+    }
+
     setAudioEnabled(on: boolean): void {
         const p = this.producers.get('audio')
         if (!p) return
@@ -180,29 +190,34 @@ export class SfuClient {
     private async consume(producerId: string, peerId: string): Promise<void> {
         if (this.closed || this.consumedProducers.has(producerId)) return
         this.consumedProducers.add(producerId)
-        const transport = await this.ensureRecv()
-        const params = await this.rpc('consume', {
-            transportId: transport.id,
-            producerId,
-            rtpCapabilities: this.device.rtpCapabilities,
-        })
-        const consumer = await transport.consume({
-            id: params.id,
-            producerId: params.producerId,
-            kind: params.kind,
-            rtpParameters: params.rtpParameters,
-        })
-        this.consumers.set(consumer.id, { consumer, peerId })
-        this.consumerByProducer.set(producerId, consumer.id)
-        await this.rpc('resume-consumer', { consumerId: consumer.id })
+        try {
+            const transport = await this.ensureRecv()
+            const params = await this.rpc('consume', {
+                transportId: transport.id,
+                producerId,
+                rtpCapabilities: this.device.rtpCapabilities,
+            })
+            const consumer = await transport.consume({
+                id: params.id,
+                producerId: params.producerId,
+                kind: params.kind,
+                rtpParameters: params.rtpParameters,
+            })
+            this.consumers.set(consumer.id, { consumer, peerId })
+            this.consumerByProducer.set(producerId, consumer.id)
+            await this.rpc('resume-consumer', { consumerId: consumer.id })
 
-        let stream = this.streamByPeer.get(peerId)
-        if (!stream) {
-            stream = new MediaStream()
-            this.streamByPeer.set(peerId, stream)
+            let stream = this.streamByPeer.get(peerId)
+            if (!stream) {
+                stream = new MediaStream()
+                this.streamByPeer.set(peerId, stream)
+            }
+            stream.addTrack(consumer.track)
+            this.onRemoteStream?.(peerId, stream)
+        } catch (err) {
+            this.consumedProducers.delete(producerId)
+            throw err
         }
-        stream.addTrack(consumer.track)
-        this.onRemoteStream?.(peerId, stream)
     }
 
     private onProducerClosed(producerId: string): void {

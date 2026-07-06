@@ -1,4 +1,4 @@
-import type { Room } from 'rtcforge-sdk'
+import type { Room } from 'rtcforge/client'
 
 // Fallback ICE if the signaling server delivers none (it normally does, via its
 // iceServersHook → room-joined.iceServers).

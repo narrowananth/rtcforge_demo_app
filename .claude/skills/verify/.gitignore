@@ -1,0 +1,4 @@
+browser/node_modules/
+browser/shots/
+browser/package-lock.json
+server.log

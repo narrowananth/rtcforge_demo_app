@@ -2,7 +2,7 @@
 
 /**
  * SFU control-plane protocol — the thin request/response glue between the
- * browser's `mediasoup-client` and this server's `rtcforge-media` `MediaRouter`.
+ * browser's `mediasoup-client` and this server's `rtcforge/media` `MediaRouter`.
  * rtcforge ships the SFU (server) and the signaling relay but not this protocol,
  * so we ride it over the signaling `signal` channel using a reserved peer id.
  *
@@ -17,15 +17,15 @@
  *
  * Actions map 1:1 onto MediaRouter methods:
  *   get-rtp-capabilities → router.rtpCapabilities
- *   create-transport     → router.createWebRtcTransport(peerId)
- *   connect-transport    → router.connectTransport(transportId, dtlsParameters)
+ *   create-transport     → router.createWebRtcTransport(peerId, direction)
+ *   connect-transport    → router.connectTransport(peerId, transportId, dtlsParameters)
  *   produce              → router.produce(peerId, transportId, kind, rtpParameters)
  *   consume              → router.consume(peerId, transportId, producerId, rtpCapabilities)
- *   resume-consumer      → router.resumeConsumer(consumerId)
+ *   resume-consumer      → router.resumeConsumer(peerId, consumerId)
  *   list-producers       → existing producers from OTHER peers (for late joiners)
  */
 
-const { MediaRouterEvent } = require('rtcforge-media')
+const { MediaRouterEvent } = require('rtcforge/media')
 const logger = require('../logger')
 
 const SFU_PEER = 'sfu'
@@ -102,6 +102,10 @@ function createSfuSignaling({ signaling, sfu, topology }) {
                 topology.planBroadcast(room.id, Math.max(0, room.getPeerCount() - 1))
             room.on('peerJoined', replan)
             room.on('peerLeft', replan)
+            // The broadcaster leaving is surfaced to viewers by rtcforge itself:
+            // the server Room broadcasts `peer-left`, and each viewer's client Room
+            // emits RoomEvent.PeerLeft for the broadcaster's id (see the frontend
+            // call-context). No bespoke notification is needed here.
         }
         room.once('closed', () => {
             producersByRoom.delete(room.id)
@@ -135,10 +139,12 @@ function createSfuSignaling({ signaling, sfu, topology }) {
                 result = { routerRtpCapabilities: router.rtpCapabilities }
                 break
             case 'create-transport':
-                result = { transport: await router.createWebRtcTransport(peer.id) }
+                result = {
+                    transport: await router.createWebRtcTransport(peer.id, msg.direction),
+                }
                 break
             case 'connect-transport':
-                await router.connectTransport(msg.transportId, msg.dtlsParameters)
+                await router.connectTransport(peer.id, msg.transportId, msg.dtlsParameters)
                 result = { connected: true }
                 break
             case 'produce': {
@@ -172,7 +178,7 @@ function createSfuSignaling({ signaling, sfu, topology }) {
                 break
             }
             case 'resume-consumer':
-                await router.resumeConsumer(msg.consumerId)
+                await router.resumeConsumer(peer.id, msg.consumerId)
                 result = { resumed: true }
                 break
             case 'list-producers': {

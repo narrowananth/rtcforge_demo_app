@@ -5,12 +5,12 @@
  *  - readJson: tolerant read (missing/corrupt → fallback)
  *  - writeJsonAtomic: temp file → fsync → rename, so a crash can never leave a
  *    half-written file.
- *  - WriteQueue: serializes writes per key via a rtcforge-core `Lock` so
+ *  - WriteQueue: serializes writes per key via a rtcforge/core `Lock` so
  *    concurrent updates to the same file can't interleave or clobber each other.
  *
  * The disk I/O itself is unavoidably local — rtcforge is real-time infra, not a
  * storage layer — but the concurrency control (the `Lock`) and id generation
- * come from rtcforge-core.
+ * come from rtcforge/core.
  */
 
 const fsp = require('node:fs/promises')
@@ -49,7 +49,7 @@ async function writeJsonAtomic(file, data) {
 }
 
 /**
- * Per-key write serializer backed by a rtcforge-core `MemoryLock` (a mutex).
+ * Per-key write serializer backed by a rtcforge/core `MemoryLock` (a mutex).
  * `run(key, task)` holds the lock for `key` for the duration of `task`, so
  * read-modify-write sequences on the same file are mutually exclusive.
  */

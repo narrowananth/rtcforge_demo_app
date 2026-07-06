@@ -1,11 +1,11 @@
 'use strict'
 
 /**
- * Cross-node cascade byte-relay — the media plane behind `rtcforge-sfu`'s
+ * Cross-node cascade byte-relay — the media plane behind `rtcforge/sfu`'s
  * `CascadeTree`/`CascadeBridge`. It implements the `CascadePipeInterface`
  * (`pipeLink`/`unpipeLink`): when the cascade planner decides node A must relay a
  * room to node B, `pipeLink` wires a real mediasoup **pipe transport** pair
- * between the two nodes' `MediaRouter`s (rtcforge-media
+ * between the two nodes' `MediaRouter`s (rtcforge/media
  * `createPipeTransport`/`connectPipeTransport`) and pumps the room's producers
  * across it (`pipeConsume` → `pipeProduce`), so a producer on the origin node
  * appears on the edge node's router and its local viewers can consume it.
@@ -19,7 +19,7 @@
  * locally is logged and skipped (the seam where cross-host transport plugs in).
  */
 
-const { MediaRouterEvent } = require('rtcforge-media')
+const { MediaRouterEvent } = require('rtcforge/media')
 const logger = require('../logger')
 
 function roomLike(roomId) {
@@ -39,7 +39,7 @@ class SfuMesh {
      * Supply the producer ids currently live in a room. A cascade edge is created
      * by the plan that the broadcaster's *own* producer triggers — so that
      * producer already exists before the pipe does, and a future-only ProducerAdded
-     * hook would never relay it (rtcforge-media exposes no producer enumeration).
+     * hook would never relay it (rtcforge/media exposes no producer enumeration).
      * The app tracks producers in sfuSignaling; wiring that in here lets a newly
      * established edge backfill them so edge-node viewers actually receive media.
      * @param {(roomId: string) => Iterable<string>} fn

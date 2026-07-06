@@ -1,0 +1,10 @@
+{
+    "name": "forgechat-verify-browser",
+    "private": true,
+    "version": "1.0.0",
+    "description": "Headless-browser drives for ForgeChat verification (fake media devices).",
+    "type": "module",
+    "dependencies": {
+        "playwright": "^1.49.0"
+    }
+}

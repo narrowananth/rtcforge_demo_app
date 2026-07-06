@@ -1,13 +1,13 @@
 'use strict'
 
 /**
- * Structured logger implementing the full rtcforge-core `Logger` interface
+ * Structured logger implementing the full rtcforge/core `Logger` interface
  * ({ debug, info, warn, error, fatal }). Emits one JSON object per line —
  * friendly to log shippers (Loki, CloudWatch, Datadog) in production, readable
  * enough in dev. Passed straight into `SignalingServer`, `MediaService`, the SFU
  * cluster, and gossip transport as their `logger`.
  *
- * @type {import('rtcforge-core').Logger}
+ * @type {import('rtcforge/core').Logger}
  */
 
 const config = require('./config')

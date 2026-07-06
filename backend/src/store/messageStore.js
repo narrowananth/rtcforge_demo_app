@@ -3,10 +3,10 @@
 /**
  * Message persistence — one JSON file per conversation, no database.
  *
- * In-memory layer is a rtcforge-core `MemoryStateStore` (convId → Message[]);
+ * In-memory layer is a rtcforge/core `MemoryStateStore` (convId → Message[]);
  * appends/mutations hit memory so concurrent operations never race on a
  * read-modify-write. Dirty conversations are flushed on a debounce driven by the
- * rtcforge-core `Clock`, atomically (temp → fsync → rename), and capped at
+ * rtcforge/core `Clock`, atomically (temp → fsync → rename), and capped at
  * `maxStoredMessagesPerConversation`. Only the disk snapshot is local.
  */
 
@@ -122,7 +122,7 @@ class MessageStore {
     }
 
     /**
-     * Best-effort flush for hard-exit paths. rtcforge-core's `StateStore` is
+     * Best-effort flush for hard-exit paths. rtcforge/core's `StateStore` is
      * async-only, so this fires async writes it cannot await before exit — the
      * real durability guarantees are the debounced flush and graceful `close()`.
      */

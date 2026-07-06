@@ -3,10 +3,10 @@
 /**
  * User accounts — one JSON file per user, plus a username→id index file.
  *
- * The in-memory layer is a rtcforge-core `MemoryStateStore` (users keyed by id,
+ * The in-memory layer is a rtcforge/core `MemoryStateStore` (users keyed by id,
  * plus a second store for the usernameLower→id index); durability is a
  * write-through JSON snapshot per user, serialized per file via the WriteQueue
- * (rtcforge-core `Lock`). The only local part is the disk snapshot itself —
+ * (rtcforge/core `Lock`). The only local part is the disk snapshot itself —
  * rtcforge has no storage layer.
  *
  * User shape:

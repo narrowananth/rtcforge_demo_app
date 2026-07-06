@@ -11,6 +11,7 @@ interface MessageBubbleProps {
     isGroup: boolean
     meId: string
     p2pBlobs: Record<string, string>
+    p2pProgress: Record<string, number>
     onOpenMenu: (message: Message, at: { x: number; y: number }) => void
     onToggleReaction: (message: Message, emoji: string) => void
 }
@@ -21,6 +22,7 @@ export function MessageBubble({
     isGroup,
     meId,
     p2pBlobs,
+    p2pProgress,
     onOpenMenu,
     onToggleReaction,
 }: MessageBubbleProps) {
@@ -72,7 +74,9 @@ export function MessageBubble({
                 </Text>
             ) : (
                 <>
-                    {m.attachment && <MediaView message={m} p2pBlobs={p2pBlobs} />}
+                    {m.attachment && (
+                        <MediaView message={m} p2pBlobs={p2pBlobs} p2pProgress={p2pProgress} />
+                    )}
                     {m.text && (
                         <Text whiteSpace="pre-wrap" wordBreak="break-word" lineHeight="1.4">
                             {m.text}

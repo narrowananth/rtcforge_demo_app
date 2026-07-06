@@ -26,14 +26,9 @@
     "license": "MIT",
     "type": "commonjs",
     "dependencies": {
-        "cluster-core": "^2.0.1",
         "express": "^5.2.1",
-        "rtcforge-adapter-udp": "^0.1.2",
-        "rtcforge-core": "^0.1.2",
-        "rtcforge-media": "^0.1.2",
-        "rtcforge-sdk": "^0.1.2",
-        "rtcforge-sfu": "^0.1.2",
-        "rtcforge-signaling": "^0.1.2",
+        "mediasoup": "^3.20.10",
+        "rtcforge": "^1.1.1",
         "zod": "^4.4.3"
     },
     "devDependencies": {

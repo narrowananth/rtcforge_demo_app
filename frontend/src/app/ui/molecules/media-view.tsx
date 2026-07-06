@@ -6,6 +6,7 @@ import { mediaSource } from '../../shared/utils'
 interface MediaViewProps {
     message: Message
     p2pBlobs: Record<string, string>
+    p2pProgress: Record<string, number>
 }
 
 const mediaStyle: React.CSSProperties = {
@@ -17,22 +18,41 @@ const mediaStyle: React.CSSProperties = {
     cursor: 'pointer',
 }
 
-export function MediaView({ message, p2pBlobs }: MediaViewProps) {
+export function MediaView({ message, p2pBlobs, p2pProgress }: MediaViewProps) {
     const att = message.attachment
     if (!att) return null
     const src = mediaSource(att, new Map(Object.entries(p2pBlobs)))
+    const progress = att.transferId ? p2pProgress[att.transferId] : undefined
+    const transferring = att.p2p && progress !== undefined && progress < 1
 
     if (!src) {
         return (
             <Flex align="center" gap="3" bg="blackAlpha.400" px="3" py="2" borderRadius="md">
                 <Paperclip size={20} />
-                <Box>
+                <Box flex="1">
                     <Text fontWeight="semibold" wordBreak="break-all">
                         {att.filename}
                     </Text>
-                    <Text fontSize="xs" color="fg.muted">
-                        {att.p2p ? 'sent peer-to-peer' : 'unavailable'}
-                    </Text>
+                    {transferring ? (
+                        <Box>
+                            <Text fontSize="xs" color="fg.muted">
+                                Receiving… {Math.round((progress ?? 0) * 100)}%
+                            </Text>
+                            <Box mt="1" h="3px" bg="whiteAlpha.300" borderRadius="full">
+                                <Box
+                                    h="3px"
+                                    bg="accent.solid"
+                                    borderRadius="full"
+                                    width={`${Math.round((progress ?? 0) * 100)}%`}
+                                    transition="width 0.2s"
+                                />
+                            </Box>
+                        </Box>
+                    ) : (
+                        <Text fontSize="xs" color="fg.muted">
+                            {att.p2p ? 'sent peer-to-peer' : 'unavailable'}
+                        </Text>
+                    )}
                 </Box>
             </Flex>
         )

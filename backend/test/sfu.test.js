@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * SFU control-plane test — boots the REAL rtcforge-media SFU (mediasoup workers)
+ * SFU control-plane test — boots the REAL rtcforge/media SFU (mediasoup workers)
  * and drives the produce/consume signaling protocol end-to-end with fake
  * signaling peers. Verifies:
  *   - the mediasoup worker boots and a per-room MediaRouter is created

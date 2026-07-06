@@ -25,6 +25,7 @@ interface ChatState {
     presence: Record<string, boolean>
     unread: Record<string, number>
     p2pBlobs: Record<string, string>
+    p2pProgress: Record<string, number>
     activeId: string | null
 }
 
@@ -35,6 +36,7 @@ const initialState: ChatState = {
     presence: {},
     unread: {},
     p2pBlobs: {},
+    p2pProgress: {},
     activeId: null,
 }
 
@@ -50,6 +52,7 @@ type Action =
     | { type: 'set-active'; convId: string | null }
     | { type: 'inc-unread'; convId: string }
     | { type: 'set-blob'; transferId: string; url: string }
+    | { type: 'set-progress'; transferId: string; ratio: number }
 
 function reducer(state: ChatState, action: Action): ChatState {
     switch (action.type) {
@@ -121,6 +124,11 @@ function reducer(state: ChatState, action: Action): ChatState {
             }
         case 'set-blob':
             return { ...state, p2pBlobs: { ...state.p2pBlobs, [action.transferId]: action.url } }
+        case 'set-progress':
+            return {
+                ...state,
+                p2pProgress: { ...state.p2pProgress, [action.transferId]: action.ratio },
+            }
         default:
             return state
     }
@@ -146,7 +154,7 @@ const ChatContext = createContext<ChatApi | null>(null)
 
 export function ChatProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth()
-    const { subscribe } = useRealtime()
+    const { subscribe, reconnectNonce } = useRealtime()
     const toast = useToast()
     const [state, dispatch] = useReducer(reducer, initialState)
 
@@ -180,9 +188,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
     }, [user])
 
-    // Load conversations once connected.
-    useEffect(() => {
-        if (!user) return
+    const loadConversations = useCallback(() => {
         conversationGateway
             .list()
             .then(({ conversations }) => {
@@ -190,7 +196,30 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 void refreshPresence()
             })
             .catch(() => undefined)
-    }, [user, refreshPresence])
+    }, [refreshPresence])
+
+    // Load conversations once connected.
+    useEffect(() => {
+        if (!user) return
+        loadConversations()
+    }, [user, loadConversations])
+
+    // Resync after an inbox reconnect: events pushed while the socket was down
+    // are lost (the server buffers nothing), so refetch the conversation list and
+    // the open conversation's history to catch up.
+    useEffect(() => {
+        if (reconnectNonce === 0 || !user) return
+        loadConversations()
+        const active = stateRef.current.activeId
+        if (active) {
+            messageGateway
+                .history(active)
+                .then(({ messages }) =>
+                    dispatch({ type: 'set-messages', convId: active, messages }),
+                )
+                .catch(() => undefined)
+        }
+    }, [reconnectNonce, user, loadConversations])
 
     // Handle realtime events.
     useEffect(() => {
@@ -253,8 +282,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                     dispatch({ type: 'set-presence', entries: { [event.userId]: event.online } })
                     break
                 case 'p2p-incoming':
-                    void receiveFileP2P(event, (url) =>
-                        dispatch({ type: 'set-blob', transferId: event.transferId, url }),
+                    void receiveFileP2P(
+                        event,
+                        (url) => dispatch({ type: 'set-blob', transferId: event.transferId, url }),
+                        (ratio) =>
+                            dispatch({ type: 'set-progress', transferId: event.transferId, ratio }),
                     )
                     break
                 default:
@@ -334,13 +366,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                         })
                         dispatch({ type: 'upsert-message', message })
                         const recipientId = conv.otherUser?.id
-                        if (recipientId)
+                        if (recipientId) {
+                            const transferId = offer.transferId
                             void sendFileP2P({
                                 roomId: offer.roomId,
                                 token: offer.token,
                                 recipientId,
                                 file,
+                                onProgress: (ratio) =>
+                                    dispatch({ type: 'set-progress', transferId, ratio }),
                             })
+                        }
                         return
                     }
                 }

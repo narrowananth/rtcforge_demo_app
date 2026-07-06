@@ -38,12 +38,9 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
-      rtcforge-media:
-        specifier: ^0.1.2
-        version: 0.1.2(rtcforge-core@0.1.2)(rtcforge-sdk@0.1.2)(rtcforge-signaling@0.1.2)
-      rtcforge-sdk:
-        specifier: ^0.1.2
-        version: 0.1.2
+      rtcforge:
+        specifier: ^1.1.1
+        version: 1.1.1(mediasoup@3.20.10)
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.2
@@ -1286,21 +1283,14 @@ packages:
     engines: {node: '>=18.0.0', npm: '>=8.0.0'}
     hasBin: true
 
-  rtcforge-core@0.1.2:
-    resolution: {integrity: sha512-rI3EHl7z9iZuMAtuTaCOtJcuMyiM5VC7d8mDHg7u4fwP0xwuk72g3j2vpwP+7omgj0CYFXDUpQOvL1KPiEEgXg==}
-
-  rtcforge-media@0.1.2:
-    resolution: {integrity: sha512-0nRNS0SkxKTAdHHOE0GqWVkd35vBbSLg6bS8m/bQgW6BWvlTBk8GURMlAS0JHmZpQ3wkkxGar5TdtGa4REvTyA==}
+  rtcforge@1.1.1:
+    resolution: {integrity: sha512-PZFrdfcRlmo47ZQpQk2GpAPM5QDDUcbfS7IEUo0OegJDXNVlgl2bVDUfRIa3XhyQMS72RZnAx2FzdYwuF0PuJA==}
+    engines: {node: '>=18.0.0'}
     peerDependencies:
-      rtcforge-core: ^0.1.0
-      rtcforge-sdk: ^0.1.0
-      rtcforge-signaling: ^0.1.0
-
-  rtcforge-sdk@0.1.2:
-    resolution: {integrity: sha512-y9Vtt+MHOt86ZPkeca63QfewlfA0sBXYbx1MrJBpL2VyLYkglo3O5CsZN3MWGQnr1qq3PcX8rEhLYw4nK0732w==}
-
-  rtcforge-signaling@0.1.2:
-    resolution: {integrity: sha512-kWvDJaBsbg0fCMjjXkRAigsQYZB+y0vb771SkztHdDtpU00SnD6M4aMf0INWHue85YO2ahYoe2DtAuBDmuumgg==}
+      mediasoup: ^3.20.10
+    peerDependenciesMeta:
+      mediasoup:
+        optional: true
 
   scheduler@0.23.2:
     resolution: {integrity: sha512-UOShsPwz7NrMUqhR6t0hWjFduvOzbtv7toDH1/hIrfRNIDBnnBWd0CwJTGvTpngVlmwGCdP9/Zl/tVrDqcuYzQ==}
@@ -1849,6 +1839,7 @@ snapshots:
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
+    optional: true
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -2641,7 +2632,8 @@ snapshots:
 
   caniuse-lite@1.0.30001800: {}
 
-  chownr@3.0.0: {}
+  chownr@3.0.0:
+    optional: true
 
   combined-stream@1.0.8:
     dependencies:
@@ -2661,7 +2653,8 @@ snapshots:
 
   csstype@3.2.3: {}
 
-  data-uri-to-buffer@4.0.1: {}
+  data-uri-to-buffer@4.0.1:
+    optional: true
 
   debug@4.4.3(supports-color@10.2.2):
     dependencies:
@@ -2745,10 +2738,12 @@ snapshots:
     dependencies:
       node-domexception: 1.0.0
       web-streams-polyfill: 3.3.3
+    optional: true
 
   find-root@1.1.0: {}
 
-  flatbuffers@25.9.23: {}
+  flatbuffers@25.9.23:
+    optional: true
 
   follow-redirects@1.16.0: {}
 
@@ -2763,6 +2758,7 @@ snapshots:
   formdata-polyfill@4.0.10:
     dependencies:
       fetch-blob: 3.2.0
+    optional: true
 
   framer-motion@12.42.2(@emotion/is-prop-valid@1.4.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
@@ -2883,6 +2879,7 @@ snapshots:
       node-fetch: 3.3.2
       supports-color: 10.2.2
       tar: 7.5.19
+    optional: true
 
   mime-db@1.52.0: {}
 
@@ -2890,11 +2887,13 @@ snapshots:
     dependencies:
       mime-db: 1.52.0
 
-  minipass@7.1.3: {}
+  minipass@7.1.3:
+    optional: true
 
   minizlib@3.1.0:
     dependencies:
       minipass: 7.1.3
+    optional: true
 
   motion-dom@12.42.2:
     dependencies:
@@ -2906,13 +2905,15 @@ snapshots:
 
   nanoid@3.3.15: {}
 
-  node-domexception@1.0.0: {}
+  node-domexception@1.0.0:
+    optional: true
 
   node-fetch@3.3.2:
     dependencies:
       data-uri-to-buffer: 4.0.1
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
+    optional: true
 
   node-releases@2.0.50: {}
 
@@ -3005,31 +3006,12 @@ snapshots:
       '@rollup/rollup-win32-x64-msvc': 4.62.2
       fsevents: 2.3.3
 
-  rtcforge-core@0.1.2: {}
-
-  rtcforge-media@0.1.2(rtcforge-core@0.1.2)(rtcforge-sdk@0.1.2)(rtcforge-signaling@0.1.2):
+  rtcforge@1.1.1(mediasoup@3.20.10):
     dependencies:
-      mediasoup: 3.20.10
-      rtcforge-core: 0.1.2
-      rtcforge-sdk: 0.1.2
-      rtcforge-signaling: 0.1.2
-      zod: 4.4.3
-
-  rtcforge-sdk@0.1.2:
-    dependencies:
-      rtcforge-core: 0.1.2
+      ws: 8.21.0
       zod: 4.4.3
     optionalDependencies:
-      ws: 8.21.0
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  rtcforge-signaling@0.1.2:
-    dependencies:
-      rtcforge-core: 0.1.2
-      ws: 8.21.0
-      zod: 4.4.3
+      mediasoup: 3.20.10
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -3059,6 +3041,7 @@ snapshots:
       minipass: 7.1.3
       minizlib: 3.1.0
       yallist: 5.0.0
+    optional: true
 
   tinyglobby@0.2.17:
     dependencies:
@@ -3091,13 +3074,15 @@ snapshots:
       '@types/node': 22.20.0
       fsevents: 2.3.3
 
-  web-streams-polyfill@3.3.3: {}
+  web-streams-polyfill@3.3.3:
+    optional: true
 
   ws@8.21.0: {}
 
   yallist@3.1.1: {}
 
-  yallist@5.0.0: {}
+  yallist@5.0.0:
+    optional: true
 
   yaml@1.10.3: {}
 

@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * Server-side SFU media, powered by `rtcforge-media` (mediasoup under the hood).
+ * Server-side SFU media, powered by `rtcforge/media` (mediasoup under the hood).
  *
  * A `MediaService` owns a pool of mediasoup workers. Each call/broadcast
  * signaling room gets ONE `MediaRouter` (`ensureRoom`): a broadcaster/caller
@@ -13,7 +13,7 @@
  * that drives them lives in ./sfuSignaling.js.
  */
 
-const { MediaService } = require('rtcforge-media')
+const { MediaService } = require('rtcforge/media')
 const config = require('../config')
 const logger = require('../logger')
 const { MemoryLock } = require('../rtc')
@@ -42,13 +42,13 @@ class SfuService {
             },
             webRtcTransport: { listenInfos: listenInfos() },
         })
-        // Genuine rtcforge-core `Lock` use: serialize concurrent joins to the same
+        // Genuine rtcforge/core `Lock` use: serialize concurrent joins to the same
         // room so exactly one MediaRouter is attached, never a duplicate.
         this._lock = new MemoryLock()
         this._started = false
     }
 
-    /** Underlying rtcforge-media MediaService (used by the SFU cluster bridge). */
+    /** Underlying rtcforge/media MediaService (used by the SFU cluster bridge). */
     get service() {
         return this._svc
     }
@@ -70,8 +70,8 @@ class SfuService {
 
     /**
      * Idempotent, race-safe attach of a MediaRouter to a signaling Room.
-     * @param {import('rtcforge-media').RoomLike} room
-     * @returns {Promise<import('rtcforge-media').MediaRouter>}
+     * @param {import('rtcforge/media').RoomLike} room
+     * @returns {Promise<import('rtcforge/media').MediaRouter>}
      */
     async ensureRoom(room) {
         const existing = this._svc.getRouter(room.id)

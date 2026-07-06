@@ -60,6 +60,12 @@ const config = {
     maxMessagesPerSecond: int('MAX_MESSAGES_PER_SECOND', 120),
     pingInterval: int('PING_INTERVAL_MS', 25000),
     pongTimeout: int('PONG_TIMEOUT_MS', 60000),
+    // CSWSH defense: only these browser Origins may open the signaling socket.
+    // Empty allows any origin (dev / non-browser clients) — set in production.
+    allowedOrigins: list('ALLOWED_ORIGINS'),
+    // Hard capacity caps (defence-in-depth against connection/room floods).
+    maxConnections: int('MAX_CONNECTIONS', 10000),
+    maxRooms: int('MAX_ROOMS', 20000),
 
     // Persistence layout.
     dataDir,
@@ -105,7 +111,7 @@ const config = {
           }
         : null,
 
-    // --- SFU media (rtcforge-media → mediasoup) ------------------------------
+    // --- SFU media (rtcforge/media → mediasoup) ------------------------------
     // Server-side selective forwarding: a broadcaster/caller PRODUCES tracks and
     // every other room member CONSUMES them (one → many), instead of a P2P mesh.
     sfu: {
@@ -122,9 +128,9 @@ const config = {
         viewersPerNode: int('SFU_VIEWERS_PER_NODE', 500),
     },
 
-    // --- Cluster (rtcforge-core Membership + HashRing) ----------------------
+    // --- Cluster (rtcforge/core Membership + HashRing) ----------------------
     // Single node by default (MemoryMembership). Set CLUSTER_UDP_PORT to switch
-    // to SWIM gossip over rtcforge-adapter-udp and shard rooms across nodes.
+    // to SWIM gossip over rtcforge/sfu/udp and shard rooms across nodes.
     cluster: {
         selfId: process.env.CLUSTER_NODE_ID || newId('node_'),
         region: process.env.CLUSTER_REGION || 'local',

@@ -2,8 +2,8 @@
 
 /**
  * Cross-node cascade byte-relay test (gap 1). Boots TWO real SFU nodes
- * (rtcforge-media MediaService, distinct RTC port ranges) in one process, drives
- * the rtcforge-sfu CascadeTree with enough viewers to force an edge, and asserts
+ * (rtcforge/media MediaService, distinct RTC port ranges) in one process, drives
+ * the rtcforge/sfu CascadeTree with enough viewers to force an edge, and asserts
  * the CascadeBridge → SfuMesh path establishes a real, connected mediasoup pipe
  * transport pair between the origin and edge routers.
  *
@@ -26,7 +26,7 @@ const {
     CascadeBridge,
     SfuNode,
     LeastLoadedStrategy,
-} = require('rtcforge-sfu')
+} = require('rtcforge/sfu')
 const { SfuService } = require('../src/media/sfuService')
 const { SfuMesh } = require('../src/media/sfuMesh')
 
@@ -44,7 +44,7 @@ async function main() {
     mesh.register('node-a', nodeA)
     mesh.register('node-b', nodeB)
 
-    // rtcforge-sfu control plane: cluster + cascade tree + bridge → mesh.
+    // rtcforge/sfu control plane: cluster + cascade tree + bridge → mesh.
     const cluster = new SfuCluster({ placementStrategy: new LeastLoadedStrategy() })
     cluster.addNode(new SfuNode('node-a', 'local', { capacity: 2 }))
     cluster.addNode(new SfuNode('node-b', 'local', { capacity: 2 }))

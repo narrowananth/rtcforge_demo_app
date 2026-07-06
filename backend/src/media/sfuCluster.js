@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * Broadcast fanout topology, powered by `rtcforge-sfu`.
+ * Broadcast fanout topology, powered by `rtcforge/sfu`.
  *
  * `SfuCluster` tracks SFU nodes — discovered from the shared `Membership` (the
  * same gossip cluster the signaling RoomRouter uses), so signaling and media
@@ -22,16 +22,16 @@ const {
     CascadeBridge,
     SfuNode,
     LeastLoadedStrategy,
-} = require('rtcforge-sfu')
+} = require('rtcforge/sfu')
 const config = require('../config')
 const logger = require('../logger')
 
 class SfuTopology {
     /**
      * @param {{
-     *   self: import('rtcforge-core').NodeInfo,
+     *   self: import('rtcforge/core').NodeInfo,
      *   mesh?: import('./sfuMesh').SfuMesh,
-     *   membership?: import('rtcforge-core').Membership,
+     *   membership?: import('rtcforge/core').Membership,
      * }} opts
      */
     constructor({ self, mesh, membership }) {
@@ -78,7 +78,7 @@ class SfuTopology {
      * Plan (or re-plan) the fanout tree for a broadcast room. Best-effort: a
      * failure never blocks the broadcast (media still flows via the local
      * router). Emitting a link fires `CascadeBridge` → `SfuMesh.pipeLink`.
-     * @returns {import('rtcforge-sfu').CascadePlan | null}
+     * @returns {import('rtcforge/sfu').CascadePlan | null}
      */
     planBroadcast(roomId, viewerCount) {
         try {

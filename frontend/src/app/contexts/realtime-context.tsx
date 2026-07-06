@@ -10,14 +10,19 @@ import {
 import {
     connectInbox,
     type InboxConnection,
+    type InboxStatus,
 } from '../features/realtime/infrastructure/inbox-client'
 import type { InboxEvent } from '../shared/types'
 import { useAuth } from './auth-context'
 
 type Listener = (event: InboxEvent) => void
+export type RealtimeStatus = 'connecting' | InboxStatus
 
 interface RealtimeApi {
     connected: boolean
+    status: RealtimeStatus
+    /** Increments on every reconnect-after-drop; consumers depend on it to resync. */
+    reconnectNonce: number
     subscribe: (listener: Listener) => () => void
 }
 
@@ -25,7 +30,8 @@ const RealtimeContext = createContext<RealtimeApi | null>(null)
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
     const { user, logout } = useAuth()
-    const [connected, setConnected] = useState(false)
+    const [status, setStatus] = useState<RealtimeStatus>('connecting')
+    const [reconnectNonce, setReconnectNonce] = useState(0)
     const listeners = useRef(new Set<Listener>())
 
     const subscribe = useRef((listener: Listener) => {
@@ -39,35 +45,42 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         let cancelled = false
         const token = localStorage.getItem('fc_token')
         if (!token) return
+        setStatus('connecting')
 
-        connectInbox(
-            user.id,
-            token,
-            (event) => {
+        connectInbox(user.id, token, {
+            onEvent: (event) => {
                 for (const listener of listeners.current) listener(event)
+            },
+            onStatus: (s) => {
+                if (!cancelled) setStatus(s)
+            },
+            onReconnect: () => {
+                if (!cancelled) setReconnectNonce((n) => n + 1)
             },
             // Expired/invalid token → drop the session so the app returns to login
             // instead of the client silently retrying a token that can't work.
-            logout,
-        )
+            onAuthError: logout,
+        })
             .then((c) => {
                 if (cancelled) {
                     c.close()
                     return
                 }
                 conn = c
-                setConnected(true)
+                setStatus('connected')
             })
-            .catch(() => setConnected(false))
+            .catch(() => setStatus('terminated'))
 
         return () => {
             cancelled = true
             conn?.close()
-            setConnected(false)
         }
     }, [user, logout])
 
-    const value = useMemo<RealtimeApi>(() => ({ connected, subscribe }), [connected, subscribe])
+    const value = useMemo<RealtimeApi>(
+        () => ({ connected: status === 'connected', status, reconnectNonce, subscribe }),
+        [status, reconnectNonce, subscribe],
+    )
     return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>
 }
 

@@ -3,9 +3,9 @@
 /**
  * Conversations — one JSON file per conversation.
  *
- * In-memory layer is a rtcforge-core `MemoryStateStore` (id → conversation);
+ * In-memory layer is a rtcforge/core `MemoryStateStore` (id → conversation);
  * writes are write-through JSON snapshots serialized per id via the WriteQueue
- * (rtcforge-core `Lock`). Only the disk snapshot is local.
+ * (rtcforge/core `Lock`). Only the disk snapshot is local.
  *
  * Conversation shape:
  *   { id, type: 'dm'|'group'|'broadcast', title, avatarColor,

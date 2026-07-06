@@ -44,8 +44,54 @@ function RoundButton({
     )
 }
 
+function DeviceSelect({
+    value,
+    options,
+    onChange,
+    title,
+}: {
+    value: string | null
+    options: { deviceId: string; label: string }[]
+    onChange: (deviceId: string) => void
+    title: string
+}) {
+    if (options.length < 2) return null
+    return (
+        <select
+            title={title}
+            aria-label={title}
+            value={value ?? ''}
+            onChange={(e) => onChange(e.target.value)}
+            style={{
+                maxWidth: '200px',
+                fontSize: '12px',
+                padding: '6px 8px',
+                borderRadius: '6px',
+                background: '#1e2530',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.2)',
+            }}
+        >
+            {options.map((o) => (
+                <option key={o.deviceId} value={o.deviceId} style={{ color: '#111' }}>
+                    {o.label}
+                </option>
+            ))}
+        </select>
+    )
+}
+
 export function CallOverlay() {
-    const { ui, acceptCall, declineCall, endCall, toggleMute, toggleCam, toggleScreen } = useCall()
+    const {
+        ui,
+        acceptCall,
+        declineCall,
+        endCall,
+        toggleMute,
+        toggleCam,
+        toggleScreen,
+        switchDevice,
+    } = useCall()
     if (ui.mode === 'idle') return null
 
     const incoming = ui.mode === 'incoming'
@@ -120,6 +166,25 @@ export function CallOverlay() {
                             </Center>
                         )}
                     </Flex>
+
+                    {(ui.mics.length > 1 || ui.cams.length > 1) && (
+                        <Flex gap="2" position="absolute" bottom="28" wrap="wrap" justify="center">
+                            <DeviceSelect
+                                title="Microphone"
+                                value={ui.micId}
+                                options={ui.mics}
+                                onChange={(id) => void switchDevice('audio', id)}
+                            />
+                            {ui.media === 'video' && (
+                                <DeviceSelect
+                                    title="Camera"
+                                    value={ui.camId}
+                                    options={ui.cams}
+                                    onChange={(id) => void switchDevice('video', id)}
+                                />
+                            )}
+                        </Flex>
+                    )}
 
                     <Flex gap="6" position="absolute" bottom="10">
                         <RoundButton

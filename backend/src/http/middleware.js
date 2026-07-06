@@ -22,7 +22,7 @@ function asyncHandler(fn) {
 }
 
 /**
- * Terminal error handler — maps known errors to status codes. rtcforge-core
+ * Terminal error handler — maps known errors to status codes. rtcforge/core
  * errors (e.g. `InvalidArgumentError` thrown by the service layer) carry no HTTP
  * status, so they map to 400; explicit `err.status` (401/404) wins; everything
  * else is a 500.

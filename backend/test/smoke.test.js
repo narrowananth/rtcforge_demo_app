@@ -20,7 +20,7 @@ process.env.LOG_LEVEL = 'error'
 process.env.FLUSH_INTERVAL_MS = '150'
 
 const { createApp } = require('../src/server')
-const { RTCForgeClient } = require('rtcforge-sdk')
+const { RTCForgeClient } = require('rtcforge/client')
 
 const BASE = `http://127.0.0.1:${PORT}`
 const WS = `ws://127.0.0.1:${PORT}`

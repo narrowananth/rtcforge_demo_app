@@ -185,6 +185,7 @@ export function ConversationPane({ onOpenInfo }: { onOpenInfo: () => void }) {
                                 isGroup={conv.type === 'group'}
                                 meId={user.id}
                                 p2pBlobs={state.p2pBlobs}
+                                p2pProgress={state.p2pProgress}
                                 onOpenMenu={(message, at) => setMenu({ message, at })}
                                 onToggleReaction={(message, emoji) =>
                                     void react(conv.id, message.id, emoji)

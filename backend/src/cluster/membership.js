@@ -1,7 +1,7 @@
 'use strict'
 
 /**
- * Cluster membership for this node, built entirely on rtcforge-core.
+ * Cluster membership for this node, built entirely on rtcforge/core.
  *
  * The returned `membership` (a `Membership`) is handed to:
  *   - `SignalingServer({ cluster: { selfId, membership } })` — its internal
@@ -11,7 +11,7 @@
  *
  * Default: `MemoryMembership` (single node, heartbeated to stay live). Set
  * `CLUSTER_UDP_PORT` to switch to SWIM gossip (`GossipMembership`) over
- * `rtcforge-adapter-udp`'s `UdpGossipTransport` and shard across a real cluster —
+ * `rtcforge/sfu/udp`'s `UdpGossipTransport` and shard across a real cluster —
  * no Redis/etcd, no app code changes.
  */
 
@@ -36,8 +36,8 @@ function createCluster() {
 
     if (config.cluster.udpPort) {
         // Multi-node: SWIM gossip over UDP.
-        const { GossipMembership } = require('rtcforge-core')
-        const { UdpGossipTransport } = require('rtcforge-adapter-udp')
+        const { GossipMembership } = require('rtcforge/core')
+        const { UdpGossipTransport } = require('rtcforge/sfu/udp')
         const transport = new UdpGossipTransport({
             port: config.cluster.udpPort,
             advertiseHost: config.cluster.advertiseHost,
