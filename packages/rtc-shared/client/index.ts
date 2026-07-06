@@ -6,5 +6,6 @@
  */
 
 export { iceForRoom } from './ice'
+export { MeshCall } from './mesh-call'
 export { connectRoom, type RoomConnection } from './room'
 export { SfuClient } from './sfu-client'
