@@ -1,3 +1,4 @@
+import { SfuClient } from '@rtc-shared/client'
 import {
     createContext,
     type ReactNode,
@@ -18,7 +19,6 @@ import {
     listDevices,
     subscribeDeviceChange,
 } from '../features/calls/infrastructure/devices'
-import { SfuClient } from '@rtc-shared/client'
 import type { CallKind, CallMedia, InboxEvent } from '../shared/types'
 import { wsBaseUrl } from '../shared/utils'
 import { useRealtime } from './realtime-context'

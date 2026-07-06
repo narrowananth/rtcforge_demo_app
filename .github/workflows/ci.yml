@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    name: lint · build · test (all apps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # Installs every app + package. mediasoup's native SFU worker is downloaded
+      # here (allowed via onlyBuiltDependencies in pnpm-workspace.yaml).
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint & format check
+        run: pnpm check
+
+      - name: Build all frontends
+        run: pnpm -r build
+
+      # Each app's backend suite boots the real rtcforge signaling + mediasoup SFU
+      # and drives the control plane end-to-end (test:1 … test:5).
+      - name: Test all apps
+        run: pnpm test

@@ -1,141 +1,95 @@
-# ForgeChat
+# RTCForge apps
 
-A WhatsApp-style messenger on the **RTCForge** stack — DMs, groups, broadcast
-lists, replies, reactions, edit/delete, multimedia (P2P-first), presence, and
-audio/video calls with screen share. **No database** — the backend persists to
-JSON files.
+Five distinct real-time products, one monorepo, all built on the
+[**rtcforge**](https://www.npmjs.com/package/rtcforge) stack — rtcforge owns the
+transport (signaling, rooms, relay, P2P + SFU media, gossip cluster); each app
+owns only *what the bytes mean*. No hand-rolled signaling / media / transport.
 
-Monorepo: a Node backend and a React frontend in one repo.
+| # | App | What it is | rtcforge surface | Ports |
+|---|-----|-----------|------------------|-------|
+| 1 | **[chat](apps/chat)** | WhatsApp-style messenger — messages, presence, notifications, audio/video calls, multimedia file sharing, broadcast lists | `server` · `client` · `media` (SFU + P2P) · `filetransfer` | 3001 / 5173 |
+| 2 | **live-streaming** | one broadcaster → many viewers | `server` · `client` · `media` (SFU) | 3002 / 5174 |
+| 3 | **collaborative** | whiteboard · live cursors · shared docs (no media) | `server` · `client` (broadcast + directed signal) | 3003 / 5175 |
+| 4 | **meet** | 1:1 & small-group calls (P2P mesh) + rooms/webinars (SFU) + host controls | `server` · `client` · `media` (mesh **and** SFU) | 3004 / 5176 |
+| 5 | **massive** | one stream → thousands of viewers across a multi-node SFU cluster with cascade fan-out + ops dashboard | `server` · `client` · `media` · `sfu` · `sfu/udp` · `core` | 3005 / 5177 |
 
-```
-backend/    Node + Express + rtcforge/server  (HTTP API + inbox WebSocket)
-frontend/   Vite + React 18 + TypeScript + Chakra UI v3  (SPA)
-```
+rtcforge's model is **additive**: the room/client code is identical from app 1 →
+app 5; only the media plane changes (none → P2P mesh → single-node SFU →
+multi-node cascade cluster). That progression is exactly what the apps
+demonstrate, and what `packages/rtc-shared` encodes once.
 
-## Stack
-
-Every layer the RTCForge stack *can* own, it owns. Domain logic (users,
-conversations, messages), JSON persistence, password auth, and REST routing have
-no rtcforge equivalent and stay hand-rolled — everything else is rtcforge.
-
-**Backend** — `rtcforge/server` (per-user inbox rooms + fanout, call/broadcast
-rooms, cluster sharding via `RoomRouter`); `rtcforge/media` **SFU** (mediasoup:
-`MediaService`/`MediaRouter` — real server-side produce/consume, one → many);
-`rtcforge/sfu` (`SfuCluster` + `CascadeTree` broadcast fanout planner);
-`rtcforge/core` primitives throughout (`Clock`, `IdGenerator`, `RtcForgeError`,
-`Logger`, `EventEmitter`, `MessageBus` fanout, `MemoryLock`, `HashRing`,
-`Membership`); `rtcforge/sfu/udp` (SWIM gossip transport for multi-node);
-Express + file-based stores.
-
-**Frontend** — React 18, **Chakra UI v3** (design tokens + semantic tokens),
-TanStack Query, Axios, Framer Motion, lucide-react, Vite + TypeScript.
-`rtcforge/client` (inbox + call-room client) + **`mediasoup-client`** (SFU
-produce/consume for calls & broadcasts) + `rtcforge/media` `PeerConnection`
-(data-channel file transfer) run in the browser.
-
-## Frontend architecture
-
-Feature-oriented clean architecture + atomic UI, mirroring the reference project:
+## Layout
 
 ```
-frontend/src/app/
-  api/            axios client, endpoints, errors, types
-  contexts/       chakra, query, toast, auth, realtime, chat, call providers
-  styles/themes/  Chakra v3 theme (tokens + semantic tokens)
-  shared/         domain types, utils, emoji
-  features/
-    auth/         { domain, infrastructure }
-    contacts/     { application (known-people), infrastructure }
-    conversations/{ infrastructure }
-    messages/     { infrastructure }
-    calls/        { infrastructure }
-    transfer/     { infrastructure (P2P data-channel engine) }
-    realtime/     { infrastructure (inbox client, webrtc ICE) }
-  ui/
-    atoms/        Avatar, IconChip, Modal
-    molecules/    MessageBubble, ChatListItem, ComposerBar, MediaView,
-                  ReactionBar, MessageMenu, VideoTile
-    organisms/    Sidebar, ConversationPane, CallOverlay, modals
-  page/           AuthPage, ChatPage
+apps/
+  chat/            backend/  frontend/     # the original forgechat, moved here
+  live-streaming/  backend/  frontend/
+  collaborative/   backend/  frontend/
+  meet/            backend/  frontend/
+  massive/         backend/  frontend/
+packages/
+  rtc-shared/
+    client/   SfuClient · MeshCall · connectRoom · iceForRoom   (Vite frontends, aliased TS source)
+    server/   createSignaling · SfuService · createSfuSignaling · createTokens ·
+              SfuMesh · SfuTopology · createCluster · createLogger · Metrics · core
 ```
 
-State: `RealtimeProvider` owns the single inbox WebSocket and fans events to
-subscribers; `ChatProvider` (useReducer store) and `CallProvider` consume them.
+Every app is its own rtcforge `SignalingServer` on its own port. `rtc-shared`
+holds the wiring they all reuse — thin, parameterized layers over rtcforge, so
+no app re-implements core logic. The frontend half is consumed as aliased TS
+source (`@rtc-shared/client`, no build step); the backend half as a workspace
+package (`@forgechat/rtc-shared/server`).
 
 ## Run
 
+pnpm workspace. mediasoup builds a native SFU worker on install (allowed via
+`onlyBuiltDependencies` in `pnpm-workspace.yaml`).
+
 ```bash
-# one-time: install both packages
-pnpm -C backend install     # (or npm) — backend deps
-pnpm -C frontend install
+pnpm install            # installs all apps + packages, builds the mediasoup worker
 
-# dev — backend on :3001, Vite on :5173 (proxies /api + /media to backend)
-pnpm dev
-# open http://localhost:5173
+pnpm dev:1              # app 1 (chat)        — backend :3001, Vite :5173
+pnpm dev:2              # app 2 (live)        — :3002 / :5174
+pnpm dev:3              # app 3 (collab)      — :3003 / :5175
+pnpm dev:4              # app 4 (meet)        — :3004 / :5176
+pnpm dev:5              # app 5 (massive)     — :3005 / :5177
 
-# production — build the SPA, backend serves it on :3001
-pnpm build
-pnpm start
-# open http://localhost:3001
+pnpm build:<n>          # build one app's frontend    (pnpm -r build for all)
+pnpm start:<n>          # run one app's backend (serves its built frontend)
 ```
 
-Two browsers (or one + incognito), register two users, add each other, chat.
-Try a group, a broadcast list, replies/reactions/edit/delete, send a photo or
-voice note, and place an audio/video call with screen share.
+Open two browser tabs (or one + incognito) per app: chat between two users;
+broadcast a stream and watch it in another tab; draw on a board from two tabs;
+place a mesh call / join an SFU room; open several viewer tabs on app 5 and watch
+the cluster dashboard fill nodes and grow cascade edges.
 
 ## Test
 
 ```bash
-pnpm test        # backend end-to-end: smoke (accounts, DM/group/broadcast,
-                 # edit/delete/react/reply, media, inbox fanout, presence) +
-                 # SFU control plane (boots the real mediasoup worker, drives
-                 # produce/consume, checks broadcast publish gating)
+pnpm test               # every app's backend test suite (test:1 … test:5)
+pnpm test:5             # one app
 ```
 
-The full media byte path (DTLS/ICE, real RTP) needs a browser with a camera/mic
-and is verified manually — see **Run** (open two browsers, place a call, go live).
+Each backend test drives rtcforge with real fake-signaling peers and, for the
+media apps, boots the **real mediasoup SFU** — verifying the control plane
+(caps → transport → produce/consume), role/publish policies, host controls, and
+(app 5) multi-node placement + a real cross-node cascade pipe edge.
+
+The actual RTP byte path (DTLS/ICE, live video) needs a browser with a
+camera/mic and is verified by running the app (see **Run**).
 
 ## Lint & format
 
-[Biome](https://biomejs.dev) handles linting, formatting, and import sorting for
-**both** packages from a single root `biome.json` — no ESLint or Prettier. House
-style: 4-space indent, single quotes, semicolons as-needed, trailing commas,
-`lineWidth` 100, organized imports, and Biome's recommended lint rules.
+[Biome](https://biomejs.dev) — one root `biome.json` for the whole workspace.
 
 ```bash
-pnpm check       # lint + format check across backend + frontend (CI-safe, no writes)
-pnpm check:fix   # apply formatting + safe fixes (add --unsafe for the rest)
-pnpm lint        # lint only
-pnpm format      # format only (writes)
+pnpm check              # lint + format check (CI-safe, no writes)
+pnpm check:fix          # apply formatting + safe fixes
 ```
 
-Each package exposes the same scripts scoped to itself — e.g.
-`pnpm -C backend check`, `pnpm -C frontend format`. All resolve the same root
-config, so style is identical across the monorepo.
+## Per-app docs
 
-## How it works (recap)
-
-- **Inbox + fanout** — each user holds one signaling connection to
-  `inbox:<userId>`; `pushToUser` publishes to a `rtcforge/core` `MessageBus` topic
-  and the node hosting that inbox peer delivers it. Commands go over HTTP; realtime
-  events over the inbox socket. Rooms consistent-hash to an owning node via the
-  signaling `RoomRouter` + a `Membership` (in-memory single-node, SWIM gossip when
-  `CLUSTER_UDP_PORT` is set).
-- **Calls & broadcasts** — real **SFU** over `rtcforge/media` (mediasoup). A
-  caller/broadcaster PRODUCES its tracks once into a per-room `MediaRouter` and
-  every other member CONSUMES them (one → many) — no N-way mesh. Calls use a
-  `call:<id>` room (everyone publishes); a broadcast list uses a `bcast:<id>` room
-  where only the `broadcaster`-role token may publish and recipients are viewers.
-  The browser drives produce/consume with `mediasoup-client` over a thin protocol
-  on the signaling `signal` channel (reserved peer id `sfu`); screen share is an
-  extra video producer. `rtcforge/sfu`'s `CascadeTree` plans multi-node viewer
-  fanout.
-- **File transfer** — P2P-first: in a DM with an online peer the bytes stream
-  over a `rtcforge/media` data channel (no server); otherwise the HTTP media
-  store, which persists and reaches offline users.
-
-## Configuration
-
-Backend env (see `backend/.env.example`): `TOKEN_SECRET` (**required in prod**),
-`PORT`, `STUN_URLS`, `TURN_URL`/`TURN_USERNAME`/`TURN_CREDENTIAL`, `DATA_DIR`.
-Frontend dev env (`frontend/.env.development`): `VITE_WS_URL` (signaling socket).
+App 1 (chat) has the deepest domain and its own detailed README:
+**[apps/chat/README.md](apps/chat/README.md)**. Apps 2–5 are documented by
+the header comment in each `backend/src/server.js` (the wiring) and each app's
+`frontend/src` components.

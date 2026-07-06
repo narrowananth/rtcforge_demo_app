@@ -15,7 +15,7 @@ importers:
         specifier: ^9.1.0
         version: 9.2.3
 
-  apps/1-chat/backend:
+  apps/chat/backend:
     dependencies:
       express:
         specifier: ^5.2.1
@@ -34,7 +34,7 @@ importers:
         specifier: ^2.5.2
         version: 2.5.2
 
-  apps/1-chat/frontend:
+  apps/chat/frontend:
     dependencies:
       '@chakra-ui/react':
         specifier: ^3.28.0
@@ -92,7 +92,57 @@ importers:
         specifier: ^6.0.3
         version: 6.4.3(@types/node@22.20.0)
 
-  apps/2-live-streaming/backend:
+  apps/collaborative/backend:
+    dependencies:
+      '@forgechat/rtc-shared':
+        specifier: workspace:*
+        version: link:../../../packages/rtc-shared
+      express:
+        specifier: ^5.2.1
+        version: 5.2.1
+      rtcforge:
+        specifier: ^1.1.1
+        version: 1.1.1(mediasoup@3.21.0)
+    devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.5.2
+        version: 2.5.2
+
+  apps/collaborative/frontend:
+    dependencies:
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      rtcforge:
+        specifier: ^1.1.1
+        version: 1.1.1(mediasoup@3.21.0)
+    devDependencies:
+      '@biomejs/biome':
+        specifier: ^2.5.2
+        version: 2.5.2
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.0
+      '@types/react':
+        specifier: ^18.3.18
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.5
+        version: 18.3.7(@types/react@18.3.31)
+      '@vitejs/plugin-react':
+        specifier: ^4.3.4
+        version: 4.7.0(vite@6.4.3(@types/node@22.20.0))
+      typescript:
+        specifier: ~5.6.3
+        version: 5.6.3
+      vite:
+        specifier: ^6.0.3
+        version: 6.4.3(@types/node@22.20.0)
+
+  apps/live-streaming/backend:
     dependencies:
       '@forgechat/rtc-shared':
         specifier: workspace:*
@@ -111,7 +161,7 @@ importers:
         specifier: ^2.5.2
         version: 2.5.2
 
-  apps/2-live-streaming/frontend:
+  apps/live-streaming/frontend:
     dependencies:
       mediasoup-client:
         specifier: ^3.21.0
@@ -148,57 +198,7 @@ importers:
         specifier: ^6.0.3
         version: 6.4.3(@types/node@22.20.0)
 
-  apps/3-collaborative/backend:
-    dependencies:
-      '@forgechat/rtc-shared':
-        specifier: workspace:*
-        version: link:../../../packages/rtc-shared
-      express:
-        specifier: ^5.2.1
-        version: 5.2.1
-      rtcforge:
-        specifier: ^1.1.1
-        version: 1.1.1(mediasoup@3.21.0)
-    devDependencies:
-      '@biomejs/biome':
-        specifier: ^2.5.2
-        version: 2.5.2
-
-  apps/3-collaborative/frontend:
-    dependencies:
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.3.1
-        version: 18.3.1(react@18.3.1)
-      rtcforge:
-        specifier: ^1.1.1
-        version: 1.1.1(mediasoup@3.21.0)
-    devDependencies:
-      '@biomejs/biome':
-        specifier: ^2.5.2
-        version: 2.5.2
-      '@types/node':
-        specifier: ^22.10.2
-        version: 22.20.0
-      '@types/react':
-        specifier: ^18.3.18
-        version: 18.3.31
-      '@types/react-dom':
-        specifier: ^18.3.5
-        version: 18.3.7(@types/react@18.3.31)
-      '@vitejs/plugin-react':
-        specifier: ^4.3.4
-        version: 4.7.0(vite@6.4.3(@types/node@22.20.0))
-      typescript:
-        specifier: ~5.6.3
-        version: 5.6.3
-      vite:
-        specifier: ^6.0.3
-        version: 6.4.3(@types/node@22.20.0)
-
-  apps/4-meet/backend:
+  apps/massive/backend:
     dependencies:
       '@forgechat/rtc-shared':
         specifier: workspace:*
@@ -217,7 +217,7 @@ importers:
         specifier: ^2.5.2
         version: 2.5.2
 
-  apps/4-meet/frontend:
+  apps/massive/frontend:
     dependencies:
       mediasoup-client:
         specifier: ^3.21.0
@@ -254,7 +254,7 @@ importers:
         specifier: ^6.0.3
         version: 6.4.3(@types/node@22.20.0)
 
-  apps/5-massive/backend:
+  apps/meet/backend:
     dependencies:
       '@forgechat/rtc-shared':
         specifier: workspace:*
@@ -273,7 +273,7 @@ importers:
         specifier: ^2.5.2
         version: 2.5.2
 
-  apps/5-massive/frontend:
+  apps/meet/frontend:
     dependencies:
       mediasoup-client:
         specifier: ^3.21.0

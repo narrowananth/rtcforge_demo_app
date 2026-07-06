@@ -22,7 +22,10 @@ export default defineConfig({
         chunkSizeWarningLimit: 2000,
         rollupOptions: {
             output: {
-                manualChunks: { react: ['react', 'react-dom'], rtc: ['rtcforge/client', 'mediasoup-client'] },
+                manualChunks: {
+                    react: ['react', 'react-dom'],
+                    rtc: ['rtcforge/client', 'mediasoup-client'],
+                },
             },
         },
     },

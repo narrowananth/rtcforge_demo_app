@@ -16,7 +16,6 @@
         "noUnusedParameters": true,
         "noFallthroughCasesInSwitch": true,
         "noUncheckedSideEffectImports": true,
-        "baseUrl": ".",
         "paths": {
             "@rtc-shared/client": ["../../../packages/rtc-shared/client/index.ts"]
         }
