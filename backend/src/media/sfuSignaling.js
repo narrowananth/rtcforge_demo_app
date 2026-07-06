@@ -1,31 +1,26 @@
 'use strict'
 
 /**
- * SFU control-plane protocol — the thin request/response glue between the
- * browser's `mediasoup-client` and this server's `rtcforge/media` `MediaRouter`.
- * rtcforge ships the SFU (server) and the signaling relay but not this protocol,
- * so we ride it over the signaling `signal` channel using a reserved peer id.
+ * SFU control-plane wiring. The SFU handshake itself is rtcforge's own protocol,
+ * driven server-side by rtcforge/media `SfuSignalHandler` (caps → create/connect
+ * transport → produce/consume → resume). rtcforge ships the handler and the
+ * `sfu-*` message shapes; what it does NOT ship — and this file provides — is:
+ *   - the transport binding (rtcforge has no browser SFU client, so we carry the
+ *     messages over the signaling `signal` channel to a reserved peer id), and
+ *   - app orchestration around the handshake: producer announcement to other
+ *     peers, late-join producer discovery, and broadcaster-only publish policy.
  *
  * Transport: the client sends `signal` to the sentinel peer id `'sfu'`; the
- * signaling server tries (and fails, harmlessly) to relay it to a peer named
- * 'sfu' AND emits a `PeerEvent.Signal` we intercept here. Replies and
+ * signaling server emits a `PeerEvent.Signal` we intercept here. Replies and
  * notifications go back as `signal` with `from: 'sfu'`.
  *
- * Request  (client → server): { id, action, ...args }
+ * Request  (client → server): { id, ...SfuRequest } | { id, action:'list-producers' }
  * Response (server → client): { id, ok: true, result } | { id, ok: false, error }
- * Notify   (server → client): { event, ... }   (no id)
- *
- * Actions map 1:1 onto MediaRouter methods:
- *   get-rtp-capabilities → router.rtpCapabilities
- *   create-transport     → router.createWebRtcTransport(peerId, direction)
- *   connect-transport    → router.connectTransport(peerId, transportId, dtlsParameters)
- *   produce              → router.produce(peerId, transportId, kind, rtpParameters)
- *   consume              → router.consume(peerId, transportId, producerId, rtpCapabilities)
- *   resume-consumer      → router.resumeConsumer(peerId, consumerId)
- *   list-producers       → existing producers from OTHER peers (for late joiners)
+ *   where `result` for a core request is rtcforge's `SfuResponse`.
+ * Notify   (server → client): { event, ... }   (no id) — new-producer/producer-closed
  */
 
-const { MediaRouterEvent } = require('rtcforge/media')
+const { MediaRouterEvent, SfuMessageType, SfuSignalHandler } = require('rtcforge/media')
 const logger = require('../logger')
 
 const SFU_PEER = 'sfu'
@@ -39,8 +34,21 @@ function isSfuRoom(roomId) {
 function createSfuSignaling({ signaling, sfu, topology }) {
     // roomId -> Map<producerId, { peerId, kind }>  (mirror of live producers)
     const producersByRoom = new Map()
+    // roomId -> rtcforge SfuSignalHandler (drives the caps→…→resume handshake)
+    const handlers = new Map()
     const wiredPeers = new WeakSet()
     const attachedRooms = new WeakSet()
+
+    /** rtcforge's SfuSignalHandler for a room, created on demand and cached. */
+    async function ensureHandler(room) {
+        let handler = handlers.get(room.id)
+        if (!handler) {
+            const router = await sfu.ensureRoom(room)
+            handler = handlers.get(room.id) || new SfuSignalHandler(router)
+            handlers.set(room.id, handler)
+        }
+        return handler
+    }
 
     function sendTo(peer, data) {
         try {
@@ -109,6 +117,7 @@ function createSfuSignaling({ signaling, sfu, topology }) {
         }
         room.once('closed', () => {
             producersByRoom.delete(room.id)
+            handlers.delete(room.id)
             topology.detach(room.id)
         })
     }
@@ -132,70 +141,43 @@ function createSfuSignaling({ signaling, sfu, topology }) {
 
     async function handleRpc(room, peer, msg) {
         if (!msg || typeof msg !== 'object') return
-        const router = await sfu.ensureRoom(room)
-        let result
-        switch (msg.action) {
-            case 'get-rtp-capabilities':
-                result = { routerRtpCapabilities: router.rtpCapabilities }
-                break
-            case 'create-transport':
-                result = {
-                    transport: await router.createWebRtcTransport(peer.id, msg.direction),
+        const reply = (result) => msg.id && sendTo(peer, { id: msg.id, ok: true, result })
+        const fail = (error) => msg.id && sendTo(peer, { id: msg.id, ok: false, error })
+
+        // App-specific: late-join producer discovery. rtcforge's SFU protocol has
+        // no equivalent — the app owns producer announcement/discovery (the
+        // `new-producer`/`producer-closed` pushes above), so this stays app glue.
+        if (msg.action === 'list-producers') {
+            const registry = producerRegistry(room.id)
+            const producers = []
+            for (const [producerId, info] of registry) {
+                if (info.peerId !== peer.id) {
+                    producers.push({ producerId, peerId: info.peerId, kind: info.kind })
                 }
-                break
-            case 'connect-transport':
-                await router.connectTransport(peer.id, msg.transportId, msg.dtlsParameters)
-                result = { connected: true }
-                break
-            case 'produce': {
-                // In a broadcast room only the broadcaster may publish; everyone
-                // else is a viewer. Calls let every participant publish.
-                if (room.id.startsWith(BROADCAST_PREFIX) && peer.role !== 'broadcaster') {
-                    throw new Error('Only the broadcaster may publish to this room')
-                }
-                const producer = await router.produce(
-                    peer.id,
-                    msg.transportId,
-                    msg.kind,
-                    msg.rtpParameters,
-                )
-                result = { producerId: producer.id }
-                break
             }
-            case 'consume': {
-                const consumer = await router.consume(
-                    peer.id,
-                    msg.transportId,
-                    msg.producerId,
-                    msg.rtpCapabilities,
-                )
-                result = {
-                    id: consumer.id,
-                    producerId: consumer.producerId,
-                    kind: consumer.kind,
-                    rtpParameters: consumer.rtpParameters,
-                }
-                break
-            }
-            case 'resume-consumer':
-                await router.resumeConsumer(peer.id, msg.consumerId)
-                result = { resumed: true }
-                break
-            case 'list-producers': {
-                const registry = producerRegistry(room.id)
-                const producers = []
-                for (const [producerId, info] of registry) {
-                    if (info.peerId !== peer.id) {
-                        producers.push({ producerId, peerId: info.peerId, kind: info.kind })
-                    }
-                }
-                result = { producers }
-                break
-            }
-            default:
-                throw new Error(`Unknown SFU action: ${msg.action}`)
+            return reply({ producers })
         }
-        if (msg.id) sendTo(peer, { id: msg.id, ok: true, result })
+
+        // Everything else is rtcforge's own SFU control protocol
+        // (caps → create/connect transport → produce/consume → resume). Delegate
+        // to rtcforge's SfuSignalHandler instead of hand-rolling the dispatch;
+        // it enforces transport ownership and validates ingress.
+        if (typeof msg.type === 'string' && msg.type.startsWith('sfu-')) {
+            // App policy rtcforge doesn't own: a broadcast room only lets the
+            // broadcaster publish; everyone else is a view-only viewer.
+            if (
+                msg.type === SfuMessageType.Produce &&
+                room.id.startsWith(BROADCAST_PREFIX) &&
+                peer.role !== 'broadcaster'
+            ) {
+                return fail('Only the broadcaster may publish to this room')
+            }
+            const handler = await ensureHandler(room)
+            const response = await handler.handle(peer.id, msg)
+            return response.type === 'sfu-error' ? fail(response.message) : reply(response)
+        }
+
+        fail(`Unknown SFU message: ${msg.type || msg.action}`)
     }
 
     function bind() {

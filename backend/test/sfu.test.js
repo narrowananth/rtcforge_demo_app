@@ -5,9 +5,9 @@
  * and drives the produce/consume signaling protocol end-to-end with fake
  * signaling peers. Verifies:
  *   - the mediasoup worker boots and a per-room MediaRouter is created
- *   - get-rtp-capabilities / create-transport map onto the router
- *   - broadcast rooms gate publishing to the 'broadcaster' role
- *   - unknown actions and bad consume requests fail cleanly (ok:false)
+ *   - rtcforge's SfuSignalHandler drives sfu-caps / sfu-create-transport
+ *   - broadcast rooms gate publishing to the 'broadcaster' role (app policy)
+ *   - unknown/bad requests fail cleanly (ok:false)
  *
  * The full media byte path (DTLS/ICE, actual RTP) needs a real browser client
  * and is exercised manually — see README.
@@ -75,32 +75,32 @@ async function main() {
     signaling.emit('roomCreated', callRoom)
     await wait(200)
 
-    const caps = await rpc(alice, { id: 1, action: 'get-rtp-capabilities' })
-    assert(caps?.ok, 'get-rtp-capabilities should succeed')
-    const codecs = caps.result.routerRtpCapabilities.codecs.map((c) => c.mimeType.toLowerCase())
+    const caps = await rpc(alice, { id: 1, type: 'sfu-caps' })
+    assert(caps?.ok, 'sfu-caps should succeed')
+    const codecs = caps.result.rtpCapabilities.codecs.map((c) => c.mimeType.toLowerCase())
     assert(codecs.includes('audio/opus'), 'router advertises opus')
     assert(
         codecs.some((m) => m.startsWith('video/')),
         'router advertises a video codec',
     )
-    console.log('  ✓ per-room MediaRouter + rtpCapabilities')
+    console.log('  ✓ per-room MediaRouter + rtpCapabilities (SfuSignalHandler)')
 
-    const t = await rpc(alice, { id: 2, action: 'create-transport', direction: 'send' })
+    const t = await rpc(alice, { id: 2, type: 'sfu-create-transport', direction: 'send' })
     assert(t?.ok && t.result.transport.id, 'create-transport returns a transport id')
     assert(t.result.transport.iceCandidates.length > 0, 'transport has ICE candidates')
     assert(t.result.transport.dtlsParameters.fingerprints.length > 0, 'transport has DTLS params')
     console.log('  ✓ create-transport (ICE + DTLS params)')
 
-    const bad = await rpc(alice, { id: 3, action: 'nope' })
-    assert(bad && bad.ok === false, 'unknown action returns ok:false')
-    console.log('  ✓ unknown action rejected')
+    const bad = await rpc(alice, { id: 3, type: 'sfu-bogus' })
+    assert(bad && bad.ok === false, 'invalid SFU request returns ok:false')
+    console.log('  ✓ invalid SFU request rejected')
 
     const badConsume = await rpc(alice, {
         id: 4,
-        action: 'consume',
+        type: 'sfu-consume',
         transportId: t.result.transport.id,
         producerId: 'does-not-exist',
-        rtpCapabilities: caps.result.routerRtpCapabilities,
+        rtpCapabilities: caps.result.rtpCapabilities,
     })
     assert(badConsume && badConsume.ok === false, 'consuming a missing producer fails cleanly')
     console.log('  ✓ bad consume rejected')
@@ -113,7 +113,7 @@ async function main() {
 
     const denied = await rpc(viewer, {
         id: 5,
-        action: 'produce',
+        type: 'sfu-produce',
         transportId: 'x',
         kind: 'video',
         rtpParameters: {},

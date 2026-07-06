@@ -79,7 +79,7 @@ async function joinSfu(token, roomId) {
     room.on('signal', (from, data) => from === 'sfu' && signals.push(data))
     // rtcforge's own Room event — this is how a viewer learns the broadcaster left.
     room.on('peer-left', (peerId) => peerLefts.push(peerId))
-    const rpc = (id, action, extra) => room.sendSignal('sfu', { id, action, ...extra })
+    const rpc = (id, payload) => room.sendSignal('sfu', { id, ...payload })
     return { client, room, signals, peerLefts, rpc }
 }
 
@@ -134,15 +134,15 @@ async function main() {
         clients.push(aSfu.client, bSfu.client, cSfu.client)
         await wait(300)
 
-        aSfu.rpc(1, 'get-rtp-capabilities')
-        const caps = await waitFor(aSfu.signals, (s) => s.id === 1, 5000, 'rtp-capabilities')
-        assert.ok(caps.ok && caps.result.routerRtpCapabilities)
-        aSfu.rpc(2, 'create-transport', { direction: 'send' })
-        const tp = await waitFor(aSfu.signals, (s) => s.id === 2, 5000, 'create-transport')
+        aSfu.rpc(1, { type: 'sfu-caps' })
+        const caps = await waitFor(aSfu.signals, (s) => s.id === 1, 5000, 'sfu-caps')
+        assert.ok(caps.ok && caps.result.rtpCapabilities)
+        aSfu.rpc(2, { type: 'sfu-create-transport', direction: 'send' })
+        const tp = await waitFor(aSfu.signals, (s) => s.id === 2, 5000, 'sfu-create-transport')
         assert.ok(tp.ok && tp.result.transport && tp.result.transport.iceParameters)
-        console.log('  ✓ SFU media control plane: rtp-capabilities + create-transport OK')
+        console.log('  ✓ SFU control plane via rtcforge SfuSignalHandler: caps + create-transport')
 
-        bSfu.rpc(3, 'produce', { transportId: 'x', kind: 'video', rtpParameters: {} })
+        bSfu.rpc(3, { type: 'sfu-produce', transportId: 'x', kind: 'video', rtpParameters: {} })
         const prod = await waitFor(bSfu.signals, (s) => s.id === 3, 5000, 'viewer produce')
         assert.strictEqual(prod.ok, false)
         console.log('  ✓ viewer publish rejected (broadcaster-only gate)')
