@@ -20,6 +20,9 @@ const { createTokens } = require('./tokens')
 const { SfuService } = require('./sfu-service')
 const { createSfuSignaling, SFU_PEER } = require('./sfu-signaling')
 const { createSignaling } = require('./signaling')
+const { SfuMesh } = require('./sfu-mesh')
+const { SfuTopology } = require('./sfu-cluster')
+const { createCluster } = require('./cluster')
 
 module.exports = {
     core,
@@ -30,4 +33,8 @@ module.exports = {
     createSfuSignaling,
     SFU_PEER,
     createSignaling,
+    // Multi-node cluster + cascade fan-out (rtcforge/sfu).
+    SfuMesh,
+    SfuTopology,
+    createCluster,
 }

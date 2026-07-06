@@ -1,0 +1,327 @@
+:root {
+    --bg: #0a0d14;
+    --panel: #141924;
+    --panel-2: #1d2432;
+    --border: #28303f;
+    --text: #e7ecf3;
+    --muted: #8a93a6;
+    --accent: #12b886;
+    --accent-2: #4dabf7;
+    --hot: #ff6b3d;
+    --live: #ff3b5c;
+}
+* {
+    box-sizing: border-box;
+}
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family:
+        system-ui,
+        -apple-system,
+        Segoe UI,
+        Roboto,
+        sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+button {
+    font: inherit;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    padding: 0.55rem 0.9rem;
+    border-radius: 9px;
+}
+button:hover {
+    background: #232b3a;
+}
+button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #02120c;
+    font-weight: 600;
+}
+button.danger {
+    background: transparent;
+    border-color: var(--live);
+    color: var(--live);
+}
+input {
+    font: inherit;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 0.55rem 0.75rem;
+    outline: none;
+}
+input:focus {
+    border-color: var(--accent);
+}
+.muted {
+    color: var(--muted);
+}
+.err {
+    color: var(--live);
+    margin: 0.5rem 0 0;
+}
+.logo-dot {
+    color: var(--accent);
+}
+code {
+    background: var(--panel-2);
+    padding: 0.05rem 0.35rem;
+    border-radius: 5px;
+    font-size: 0.85em;
+}
+
+/* ---- Home ---- */
+.home {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+}
+.home-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+}
+.home-header p {
+    margin: 0.35rem 0 0;
+    max-width: 60ch;
+}
+.home-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+    margin-top: 1.75rem;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .home-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+}
+.card h2,
+.directory h2 {
+    margin: 0 0 0.9rem;
+    font-size: 1.05rem;
+}
+.row {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+.row input {
+    flex: 1 1 150px;
+}
+.directory {
+    margin-top: 1.5rem;
+}
+.stream-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.stream-row {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    text-align: left;
+    padding: 0.7rem 0.9rem;
+}
+.stream-row:hover {
+    border-color: var(--accent);
+}
+.stream-row-title {
+    flex: 1;
+    font-weight: 600;
+}
+
+/* ---- Cluster dashboard ---- */
+.cluster {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.1rem 1.25rem;
+    position: sticky;
+    top: 1rem;
+}
+.cluster-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-bottom: 0.9rem;
+}
+.cluster-head h2 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+.cluster-head span {
+    font-size: 0.75rem;
+}
+.nodes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+.node {
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 0.6rem 0.75rem;
+    background: var(--panel-2);
+}
+.node.origin {
+    border-color: var(--accent-2);
+}
+.node-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+.tag {
+    font-size: 0.62rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+    background: #10263f;
+    color: var(--accent-2);
+    padding: 0.1rem 0.4rem;
+    border-radius: 5px;
+}
+.load-bar {
+    height: 8px;
+    background: #0a0e15;
+    border-radius: 5px;
+    overflow: hidden;
+}
+.load-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 5px;
+    transition: width 0.4s ease;
+}
+.load-fill.hot {
+    background: var(--hot);
+}
+.node-stats {
+    font-size: 0.75rem;
+    margin-top: 0.35rem;
+}
+.cascade {
+    margin-top: 1rem;
+    border-top: 1px solid var(--border);
+    padding-top: 0.9rem;
+}
+.cascade h3 {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+}
+.cascade ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+}
+
+/* ---- Stage (streaming) ---- */
+.stage {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1rem;
+    height: 100vh;
+    padding: 1rem;
+}
+@media (max-width: 900px) {
+    .stage {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+}
+.stage-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.stage-title {
+    margin: 0.6rem 0 0;
+    font-size: 1rem;
+}
+.stage-side {
+    overflow: auto;
+}
+.video-area {
+    position: relative;
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    flex: 1;
+    min-height: 320px;
+}
+.video-main {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+.badges {
+    position: absolute;
+    top: 0.8rem;
+    left: 0.8rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    z-index: 2;
+}
+.badge {
+    font-size: 0.76rem;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--border);
+    padding: 0.25rem 0.55rem;
+    border-radius: 7px;
+}
+.badge.live {
+    color: #fff;
+    background: var(--live);
+    border-color: var(--live);
+}
+.error-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: var(--muted);
+    text-align: center;
+    padding: 2rem;
+}
+.controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.8rem;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+    z-index: 2;
+}
