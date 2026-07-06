@@ -1,6 +1,6 @@
 import { Device, type types } from 'mediasoup-client'
 import { MessageType, type Room } from 'rtcforge/client'
-import { iceForRoom } from '../../realtime/infrastructure/webrtc'
+import { iceForRoom } from './ice'
 
 /**
  * Browser SFU client — the mediasoup-client counterpart of the server's

@@ -18,7 +18,7 @@ import {
     listDevices,
     subscribeDeviceChange,
 } from '../features/calls/infrastructure/devices'
-import { SfuClient } from '../features/calls/infrastructure/sfu-client'
+import { SfuClient } from '@rtc-shared/client'
 import type { CallKind, CallMedia, InboxEvent } from '../shared/types'
 import { wsBaseUrl } from '../shared/utils'
 import { useRealtime } from './realtime-context'

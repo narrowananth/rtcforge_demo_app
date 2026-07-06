@@ -1,0 +1,28 @@
+{
+    "name": "@forgechat/rtc-shared",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Shared rtcforge wiring reused by every app. client/ = browser helpers (SfuClient, iceForRoom, room client) consumed by Vite frontends as aliased TS source; server/ = Node helpers consumed by backends. No hand-rolled core logic — thin ergonomics over rtcforge.",
+    "type": "commonjs",
+    "exports": {
+        "./client": "./client/index.ts",
+        "./server": "./server/index.js",
+        "./core": "./server/core.js"
+    },
+    "peerDependencies": {
+        "mediasoup-client": "^3.21.0",
+        "rtcforge": "^1.1.1"
+    },
+    "peerDependenciesMeta": {
+        "mediasoup-client": {
+            "optional": true
+        },
+        "rtcforge": {
+            "optional": true
+        }
+    },
+    "devDependencies": {
+        "mediasoup-client": "^3.21.0",
+        "rtcforge": "^1.1.1"
+    }
+}

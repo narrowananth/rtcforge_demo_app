@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
@@ -6,6 +7,15 @@ import { defineConfig } from 'vite'
 // backend (VITE_WS_URL) to avoid clashing with Vite's own HMR socket.
 export default defineConfig({
     plugins: [react()],
+    resolve: {
+        alias: {
+            // Shared rtcforge browser helpers, consumed as source (no build).
+            // Mirrored in tsconfig.app.json `paths`. Same alias in every app.
+            '@rtc-shared/client': fileURLToPath(
+                new URL('../../../packages/rtc-shared/client/index.ts', import.meta.url),
+            ),
+        },
+    },
     server: {
         port: 5173,
         proxy: {

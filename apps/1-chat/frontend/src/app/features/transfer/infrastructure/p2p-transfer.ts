@@ -10,7 +10,7 @@ import {
 import { Call, MediaEvent } from 'rtcforge/media'
 import type { InboxEvent } from '../../../shared/types'
 import { wsBaseUrl } from '../../../shared/utils'
-import { iceForRoom } from '../../realtime/infrastructure/webrtc'
+import { iceForRoom } from '@rtc-shared/client'
 
 /**
  * Peer-to-peer file transfer over the rtcforge WebRTC data channel, driven by

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+*.tsbuildinfo
 apps/*/backend/data/
 .env
 *.log
