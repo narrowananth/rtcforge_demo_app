@@ -1,0 +1,28 @@
+{
+    "name": "collaborative-backend",
+    "version": "1.0.0",
+    "description": "App 3 — collaborative whiteboard / cursors / live docs on the rtcforge room message bus (no media).",
+    "main": "src/index.js",
+    "type": "commonjs",
+    "scripts": {
+        "start": "node src/index.js",
+        "dev": "node --watch src/index.js",
+        "test": "node test/board.test.js",
+        "lint": "biome lint .",
+        "format": "biome format --write .",
+        "check": "biome check .",
+        "check:fix": "biome check --write ."
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "license": "MIT",
+    "dependencies": {
+        "@forgechat/rtc-shared": "workspace:*",
+        "express": "^5.2.1",
+        "rtcforge": "^1.1.1"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.5.2"
+    }
+}

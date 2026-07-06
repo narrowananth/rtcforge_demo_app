@@ -6,4 +6,5 @@
  */
 
 export { iceForRoom } from './ice'
+export { connectRoom, type RoomConnection } from './room'
 export { SfuClient } from './sfu-client'
