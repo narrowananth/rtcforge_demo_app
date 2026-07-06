@@ -2,3 +2,8 @@ packages:
   - 'apps/*/backend'
   - 'apps/*/frontend'
   - 'packages/*'
+
+# pnpm 10 blocks dependency build scripts by default. mediasoup must compile its
+# native SFU worker on install, so allow it explicitly.
+onlyBuiltDependencies:
+  - mediasoup
